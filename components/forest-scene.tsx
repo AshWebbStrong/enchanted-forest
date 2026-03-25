@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties } from "react";
-import type { TreeKey, TreeState } from "@/lib/types";
+import { TREE_NAMES, type TreeKey, type TreeState } from "@/lib/types";
 
 type Palette = {
   leaf1: string;
@@ -52,6 +52,16 @@ function getTreePosition(index: number, stage: number) {
     top: `${lerp(from.top, to.top, t)}%`,
   };
 }
+
+const TRUNK_NAMES = [
+  "Emily",
+  "Daisy",
+  "Rose",
+  "Anushka",
+  "Annabel",
+  "Joanna",
+  "Bea",
+];
 
 const PALETTES: Record<TreeKey, Palette> = {
   golden: {
@@ -176,6 +186,14 @@ function animationStyle(
   };
 }
 
+function getTreeLabel(tree: TreeState) {
+  const maybeLabel =
+    (tree as TreeState & { name?: string; label?: string }).name ??
+    (tree as TreeState & { name?: string; label?: string }).label;
+
+  return typeof maybeLabel === "string" ? maybeLabel : "";
+}
+
 export function ForestScene({
   trees,
   admin = false,
@@ -225,6 +243,7 @@ export function ForestScene({
           const zIndex = depthBand * 100 + stageFrontBonus + index;
 
           const pos = getTreePosition(index, tree.stage);
+          const label = TRUNK_NAMES[index] ?? "";
 
           return (
             <div
@@ -245,7 +264,13 @@ export function ForestScene({
                   transition: "transform 180ms linear",
                 }}
               >
-                <ForestSpot stage={tree.stage} variant={tree.tree_key} />
+               
+
+                <ForestSpot
+                  stage={tree.stage}
+                  variant={tree.tree_key}
+                  label={label}
+                />
               </div>
             </div>
           );
@@ -1798,9 +1823,61 @@ function getHeroGlow(variant: TreeKey) {
   }
 }
 
+function TrunkName({
+  label,
+  bottom,
+  height,
+  width,
+}: {
+  label?: string;
+  bottom: string | number;
+  height: number;
+  width: number;
+}) {
+  if (!label) return null;
+
+  const usableHeight = Math.max(16, height - 8);
+  const sizeFromTrunk = width * 1.15 + height * 0.03;
+  const sizeFromLength = usableHeight / Math.max(2.4, label.length * 0.9);
+  const fontSize = Math.max(5, Math.min(18, sizeFromTrunk, sizeFromLength));
+  const letterSpacing = Math.max(0, Math.min(1.2, fontSize * 0.05));
+  const labelWidth = Math.max(width + 6, fontSize + 2);
+
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 flex items-center justify-center font-semibold text-white/80"
+      style={{
+        bottom,
+        width: `${labelWidth}px`,
+        height: `${height}px`,
+        transform: "translateX(-50%) rotate(180deg)",
+        writingMode: "vertical-rl",
+        textOrientation: "mixed",
+        fontSize: `${fontSize}px`,
+        letterSpacing: `${letterSpacing}px`,
+        lineHeight: 1,
+        textShadow: "0 1px 2px rgba(0,0,0,0.55)",
+        overflow: "hidden",
+        whiteSpace: "nowrap",
+      }}
+      aria-hidden="true"
+    >
+      {label}
+    </div>
+  );
+}
+
 const TREE_SIZE_MULTIPLIER = 1.35;
 
-function ForestSpot({ stage, variant }: { stage: number; variant: TreeKey }) {
+function ForestSpot({
+  stage,
+  variant,
+  label,
+}: {
+  stage: number;
+  variant: TreeKey;
+  label?: string;
+}) {
   const motion = TREE_MOTION[clampStage(stage)];
   const effects = HERO_EFFECTS[variant];
 
@@ -1820,7 +1897,6 @@ function ForestSpot({ stage, variant }: { stage: number; variant: TreeKey }) {
             <div className="absolute bottom-[1.25rem] left-1/2 h-8 w-28 -translate-x-1/2 rounded-full bg-slate-950/25 blur-lg" />
             {stage >= 4 && <GroundPatch variant={variant} />}
 
-
             <div
               className="absolute inset-0 origin-bottom"
               style={
@@ -1839,7 +1915,7 @@ function ForestSpot({ stage, variant }: { stage: number; variant: TreeKey }) {
                   : undefined
               }
             >
-              <TreeGrowth stage={stage} variant={variant} />
+              <TreeGrowth stage={stage} variant={variant} label={label} />
             </div>
           </div>
         </div>
@@ -1873,22 +1949,37 @@ function GroundPatch({ variant }: { variant: TreeKey }) {
 }
 
 
-function TreeGrowth({ stage, variant }: { stage: number; variant: TreeKey }) {
+function TreeGrowth({
+  stage,
+  variant,
+  label,
+}: {
+  stage: number;
+  variant: TreeKey;
+  label?: string;
+}) {
   const s = clampStage(stage);
 
-  if (s === 1) return <PaperBud variant={variant} />;
-  if (s === 2) return <PaperSprout variant={variant} />;
-  if (s === 3) return <PaperSapling variant={variant} />;
+  if (s === 1) return <PaperBud variant={variant} label={label} />;
+  if (s === 2) return <PaperSprout variant={variant} label={label} />;
+  if (s === 3) return <PaperSapling variant={variant} label={label} />;
 
-  return <PaperCanopyTree stage={s} variant={variant} />;
+  return <PaperCanopyTree stage={s} variant={variant} label={label} />;
 }
 
-function PaperBud({ variant }: { variant: TreeKey }) {
+function PaperBud({
+  variant,
+  label,
+}: {
+  variant: TreeKey;
+  label?: string;
+}) {
   const p = PALETTES[variant];
 
   return (
     <>
       <div className={`absolute bottom-[4.55rem] left-1/2 h-8 w-[0.35rem] -translate-x-1/2 rounded-full ${p.trunk}`} />
+      <TrunkName label={label} bottom="4.55rem" height={32} width={6} />
       <div className={`absolute bottom-[5.65rem] left-1/2 h-8 w-8 -translate-x-1/2 rounded-full ${p.glow} blur-xl opacity-80`} />
       <div
         className={`absolute bottom-[5.9rem] left-[44%] h-4 w-7 ${p.leaf1}`}
@@ -1902,12 +1993,19 @@ function PaperBud({ variant }: { variant: TreeKey }) {
   );
 }
 
-function PaperSprout({ variant }: { variant: TreeKey }) {
+function PaperSprout({
+  variant,
+  label,
+}: {
+  variant: TreeKey;
+  label?: string;
+}) {
   const p = PALETTES[variant];
 
   return (
     <>
       <div className={`absolute bottom-[4.45rem] left-1/2 h-12 w-[0.45rem] -translate-x-1/2 rounded-full ${p.trunk}`} />
+      <TrunkName label={label} bottom="4.45rem" height={48} width={7} />
       <div className={`absolute bottom-[6.3rem] left-1/2 h-10 w-10 -translate-x-1/2 rounded-full ${p.glow} blur-xl opacity-80`} />
       <div
         className={`absolute bottom-[6rem] left-[41%] h-5 w-9 ${p.leaf1}`}
@@ -1925,45 +2023,68 @@ function PaperSprout({ variant }: { variant: TreeKey }) {
   );
 }
 
-function PaperSapling({ variant }: { variant: TreeKey }) {
+function PaperSapling({
+  variant,
+  label,
+}: {
+  variant: TreeKey;
+  label?: string;
+}) {
   const p = PALETTES[variant];
   const willow = variant === "willow";
+  const saplingScale = 0.82;
 
   return (
-    <>
-      <div className={`absolute bottom-[4.2rem] left-1/2 h-20 w-[0.55rem] -translate-x-1/2 rounded-full ${p.trunk}`} />
-      <div className="absolute bottom-[8.8rem] left-1/2 h-8 w-[2px] -translate-x-1/2 bg-[#61402b]/80 rotate-[28deg]" />
-      <div className="absolute bottom-[9rem] left-1/2 h-8 w-[2px] -translate-x-1/2 bg-[#61402b]/80 -rotate-[30deg]" />
-      <div className={`absolute bottom-[8.8rem] left-1/2 h-14 w-16 -translate-x-1/2 rounded-full ${p.glow} blur-2xl opacity-85`} />
+    <div className="absolute inset-0">
       <div
-        className={`absolute bottom-[8.4rem] left-[38%] h-8 w-12 ${p.leaf1}`}
-        style={{ clipPath: PAPER_CLOUD, transform: "rotate(-12deg)" }}
-      />
-      <div
-        className={`absolute bottom-[10rem] left-[50%] h-8 w-12 ${p.leaf2}`}
-        style={{ clipPath: PAPER_CLOUD, transform: "rotate(12deg)" }}
-      />
-      <div
-        className={`absolute bottom-[10.8rem] left-[44%] h-8 w-12 ${p.leaf3}`}
-        style={{ clipPath: PAPER_FAN }}
-      />
-      {willow && (
-        <>
-          <div
-            className={`absolute bottom-[8.3rem] left-[39%] h-12 w-[7px] ${p.leaf2} opacity-80`}
-            style={{ clipPath: PAPER_DRAPE }}
-          />
-          <div
-            className={`absolute bottom-[8.7rem] left-[58%] h-12 w-[7px] ${p.leaf1} opacity-80`}
-            style={{ clipPath: PAPER_DRAPE }}
-          />
-        </>
-      )}
-    </>
+        className="absolute inset-0 origin-bottom"
+        style={{
+          transform: `scale(${saplingScale})`,
+        }}
+      >
+        <div className={`absolute bottom-[4.2rem] left-1/2 h-20 w-[0.55rem] -translate-x-1/2 rounded-full ${p.trunk}`} />
+        <TrunkName label={label} bottom="4.2rem" height={80} width={9} />
+        <div className="absolute bottom-[8.8rem] left-1/2 h-8 w-[2px] -translate-x-1/2 bg-[#61402b]/80 rotate-[28deg]" />
+        <div className="absolute bottom-[9rem] left-1/2 h-8 w-[2px] -translate-x-1/2 bg-[#61402b]/80 -rotate-[30deg]" />
+        <div className={`absolute bottom-[8.8rem] left-1/2 h-14 w-16 -translate-x-1/2 rounded-full ${p.glow} blur-2xl opacity-85`} />
+        <div
+          className={`absolute bottom-[8.4rem] left-[38%] h-8 w-12 ${p.leaf1}`}
+          style={{ clipPath: PAPER_CLOUD, transform: "rotate(-12deg)" }}
+        />
+        <div
+          className={`absolute bottom-[10rem] left-[50%] h-8 w-12 ${p.leaf2}`}
+          style={{ clipPath: PAPER_CLOUD, transform: "rotate(12deg)" }}
+        />
+        <div
+          className={`absolute bottom-[10.8rem] left-[44%] h-8 w-12 ${p.leaf3}`}
+          style={{ clipPath: PAPER_FAN }}
+        />
+        {willow && (
+          <>
+            <div
+              className={`absolute bottom-[8.3rem] left-[39%] h-12 w-[7px] ${p.leaf2} opacity-80`}
+              style={{ clipPath: PAPER_DRAPE }}
+            />
+            <div
+              className={`absolute bottom-[8.7rem] left-[58%] h-12 w-[7px] ${p.leaf1} opacity-80`}
+              style={{ clipPath: PAPER_DRAPE }}
+            />
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
-function PaperCanopyTree({ stage, variant }: { stage: number; variant: TreeKey }) {
+function PaperCanopyTree({
+  stage,
+  variant,
+  label,
+}: {
+  stage: number;
+  variant: TreeKey;
+  label?: string;
+}) {
   const p = PALETTES[variant];
   const glowPalette = getHeroGlow(variant);
   const cfg = PAPER_STAGE[stage];
@@ -2019,6 +2140,13 @@ function PaperCanopyTree({ stage, variant }: { stage: number; variant: TreeKey }
           }}
         />
       ))}
+
+            <TrunkName
+        label={label}
+        bottom={0}
+        height={cfg.trunkHeight}
+        width={cfg.trunkWidth}
+      />
 
       {backLayers.map((layer, index) => (
         <LayeredBlob

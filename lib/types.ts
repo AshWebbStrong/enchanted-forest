@@ -13,11 +13,11 @@ export type TreeState = {
 };
 
 export const TREE_NAMES: Record<TreeKey, string> = {
-  golden: "Golden",
-  willow: "Willow",
-  blossom: "Blossom",
-  moon: "Moon",
-  oak: "Oak",
-  firefly: "Firefly",
-  silver: "Silver",
+  golden: "Emily",
+  willow: "Daisy",
+  blossom: "Rose",
+  moon: "Anushka",
+  oak: "Annabel",
+  firefly: "Joanna",
+  silver: "Bea",
 };
