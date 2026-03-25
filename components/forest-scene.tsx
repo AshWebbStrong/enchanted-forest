@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { TreeKey, TreeState } from "@/lib/types";
 
 type Palette = {
@@ -14,15 +14,44 @@ type Palette = {
   grass2: string;
 };
 
-const POSITIONS = [
-  { left: "33%", top: "77%" },
-  { left: "39%", top: "79%" },
-  { left: "45%", top: "73%" },
-  { left: "50%", top: "81%" },
-  { left: "55%", top: "73%" },
-  { left: "61%", top: "79%" },
-  { left: "67%", top: "77%" },
+const TREE_DEPTH_PHASES = [0.2, 1.15, 2.35, 3.1, 4.0, 5.05, 5.9];
+
+const CLUSTER_POSITIONS = [
+  { left: 37, top: 72 },
+  { left: 42, top: 73 },
+  { left: 45, top: 69 },
+  { left: 50, top: 74 },
+  { left: 55, top: 69 },
+  { left: 58, top: 73 },
+  { left: 62, top: 72 },
 ];
+
+const FULL_POSITIONS = [
+  { left: 33, top: 71 },
+  { left: 39, top: 73 },
+  { left: 45, top: 67 },
+  { left: 50, top: 75 },
+  { left: 55, top: 67 },
+  { left: 61, top: 73 },
+  { left: 67, top: 71 },
+];
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function getTreePosition(index: number, stage: number) {
+  const from = CLUSTER_POSITIONS[index];
+  const to = FULL_POSITIONS[index];
+
+  // stage 1–3 stay fairly clustered, then spread from 4 upward
+  const t = Math.max(0, Math.min(1, (stage - 3) / 5));
+
+  return {
+    left: `${lerp(from.left, to.left, t)}%`,
+    top: `${lerp(from.top, to.top, t)}%`,
+  };
+}
 
 const PALETTES: Record<TreeKey, Palette> = {
   golden: {
@@ -132,6 +161,21 @@ const BAT_GROUPS = [
   opacity,
 }));
 
+function animationStyle(
+  name: string,
+  duration: string,
+  timingFunction: CSSProperties["animationTimingFunction"] = "linear",
+  delay?: string
+): CSSProperties {
+  return {
+    animationName: name,
+    animationDuration: duration,
+    animationTimingFunction: timingFunction,
+    animationIterationCount: "infinite",
+    ...(delay ? { animationDelay: delay } : {}),
+  };
+}
+
 export function ForestScene({
   trees,
   admin = false,
@@ -143,6 +187,7 @@ export function ForestScene({
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-[#f6f0de] text-slate-800">
+      <ForestMotionStyles />
       <SkyLighting cyclePhase={cyclePhase} />
 
       <div className="absolute inset-0 overflow-hidden">
@@ -152,25 +197,59 @@ export function ForestScene({
         <div className="absolute top-24 right-[10%] h-40 w-40 rounded-full bg-yellow-100/70 blur-2xl" />
         <div className="absolute bottom-0 left-0 right-0 h-[34%] bg-[linear-gradient(to_top,_rgba(58,89,67,0.95),_rgba(103,145,96,0.8)_30%,_rgba(165,196,134,0.18)_70%,_transparent)]" />
         <ForestFloor />
+        <ForegroundForest />
         <div className="absolute left-[7%] top-[20%] h-24 w-52 rounded-full bg-emerald-950/10 blur-3xl" />
         <div className="absolute left-[38%] top-[14%] h-24 w-64 rounded-full bg-emerald-950/10 blur-3xl" />
         <div className="absolute right-[6%] top-[22%] h-28 w-56 rounded-full bg-emerald-950/10 blur-3xl" />
       </div>
 
       <div className={`relative z-10 min-h-screen ${admin ? "pr-[340px]" : ""}`}>
-        {trees.map((tree, index) => (
-          <div
-            key={tree.tree_key}
-            className="absolute"
-            style={{
-              left: POSITIONS[index].left,
-              top: POSITIONS[index].top,
-              transform: "translate(-50%, -50%)",
-            }}
-          >
-            <ForestSpot stage={tree.stage} variant={tree.tree_key} />
-          </div>
-        ))}
+        {trees.map((tree, index) => {
+          const phase = cyclePhase * Math.PI * 2 * 2 + TREE_DEPTH_PHASES[index];
+          const depth = Math.sin(phase);
+          const side = Math.cos(phase);
+
+          const xOffset = side * 10;
+          const yOffset = Math.max(0, depth) * -4;
+          const scale = 1 + Math.max(0, depth) * 0.025;
+
+          const depthBand = depth < -0.35 ? 0 : depth < 0.35 ? 1 : 2;
+
+          // Small trees get a little priority so they don't vanish behind larger ones
+          const stageFrontBonus =
+            tree.stage <= 2 ? 40 :
+            tree.stage === 3 ? 28 :
+            tree.stage === 4 ? 12 :
+            0;
+
+          const zIndex = depthBand * 100 + stageFrontBonus + index;
+
+          const pos = getTreePosition(index, tree.stage);
+
+          return (
+            <div
+              key={tree.tree_key}
+              className="absolute"
+              style={{
+                left: pos.left,
+                top: pos.top,
+                zIndex,
+                transform: "translate(-50%, -50%)",
+              }}
+            >
+              <div
+                style={{
+                  transform: `translate(${xOffset.toFixed(3)}px, ${yOffset.toFixed(
+                    3
+                  )}px) scale(${scale.toFixed(4)})`,
+                  transition: "transform 180ms linear",
+                }}
+              >
+                <ForestSpot stage={tree.stage} variant={tree.tree_key} />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -196,7 +275,9 @@ function SkyLighting({ cyclePhase }: { cyclePhase: number }) {
   const mid = [
     Math.round(244 * day + 44 * night - 78 * sunset + 12 * preDawn),
     Math.round(214 * day + 52 * night - 96 * sunset + 18 * preDawn),
-    Math.round(188 * day + 166 * night + 24 * moonHigh - 24 * sunset + 54 * preDawn),
+    Math.round(
+      188 * day + 166 * night + 24 * moonHigh - 24 * sunset + 54 * preDawn
+    ),
   ];
   const low = [
     Math.round(122 * day + 18 * night - 34 * sunset),
@@ -310,7 +391,10 @@ function SkySunMoon({
         @keyframes starTwinkle{0%,100%{opacity:.15;transform:scale(1)}50%{opacity:.8;transform:scale(1.15)}}
       `}</style>
 
-      <div className="absolute left-0 top-0" style={{ animation: "celestialArc 90s linear infinite" }}>
+      <div
+        className="absolute left-0 top-0"
+        style={animationStyle("celestialArc", "90s", "linear")}
+      >
         <div className="relative h-28 w-28 animate-[sunVisibility_180s_linear_infinite] md:h-32 md:w-32">
           <div className="absolute inset-0 rounded-full bg-yellow-100/35 blur-3xl" />
           <div className="absolute left-1/2 top-1/2 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle_at_35%_35%,_#fff7d6,_#ffe38a_45%,_#f7c948_72%,_#e9a91d_100%)] shadow-[0_0_50px_rgba(255,224,120,0.55)]" />
@@ -320,7 +404,7 @@ function SkySunMoon({
 
       <div
         className="absolute left-0 top-0"
-        style={{ animation: "celestialArc 90s linear infinite", animationDelay: "90s" }}
+        style={animationStyle("celestialArc", "90s", "linear", "90s")}
       >
         <div className="relative h-28 w-28 animate-[moonVisibility_180s_linear_infinite] md:h-32 md:w-32">
           <div className="absolute inset-0 rounded-full bg-cyan-100/16 blur-3xl" />
@@ -361,9 +445,30 @@ function SkyBirdsAndBats({ cyclePhase }: { cyclePhase: number }) {
   const nightStrength = isNight ? 1 : 0;
 
   const clouds = [
-    { top: "10%", width: "22rem", height: "5.5rem", delay: "0s", duration: "70s", opacity: 0.62 },
-    { top: "18%", width: "18rem", height: "4.4rem", delay: "-20s", duration: "80s", opacity: 0.52 },
-    { top: "28%", width: "20rem", height: "4.8rem", delay: "-40s", duration: "76s", opacity: 0.46 },
+    {
+      top: "10%",
+      width: "22rem",
+      height: "5.5rem",
+      delay: "0s",
+      duration: "70s",
+      opacity: 0.62,
+    },
+    {
+      top: "18%",
+      width: "18rem",
+      height: "4.4rem",
+      delay: "-20s",
+      duration: "80s",
+      opacity: 0.52,
+    },
+    {
+      top: "28%",
+      width: "20rem",
+      height: "4.8rem",
+      delay: "-40s",
+      duration: "76s",
+      opacity: 0.46,
+    },
   ];
 
   const dayBlend = 1 - Math.min(1, Math.max(0, (cyclePhase - 0.38) / 0.2));
@@ -405,11 +510,16 @@ function SkyBirdsAndBats({ cyclePhase }: { cyclePhase: number }) {
           style={{
             top: cloud.top,
             opacity: cloud.opacity * dayStrength,
-            animation: `cloudDrift ${cloud.duration} linear infinite`,
-            animationDelay: cloud.delay,
+            ...animationStyle("cloudDrift", cloud.duration, "linear", cloud.delay),
           }}
         >
-          <Cloud width={cloud.width} height={cloud.height} tone={cloudTone} shade={cloudShade} edge={cloudEdge} />
+          <Cloud
+            width={cloud.width}
+            height={cloud.height}
+            tone={cloudTone}
+            shade={cloudShade}
+            edge={cloudEdge}
+          />
         </div>
       ))}
 
@@ -424,8 +534,12 @@ function SkyBirdsAndBats({ cyclePhase }: { cyclePhase: number }) {
             height: star.size,
             opacity: 0.75 * nightStrength,
             boxShadow: "0 0 8px rgba(255,255,255,0.45)",
-            animation: `starTwinkle ${2.8 + (i % 3) * 0.9}s ease-in-out infinite`,
-            animationDelay: star.delay,
+            ...animationStyle(
+              "starTwinkle",
+              `${2.8 + (i % 3) * 0.9}s`,
+              "ease-in-out",
+              star.delay
+            ),
           }}
         />
       ))}
@@ -436,9 +550,14 @@ function SkyBirdsAndBats({ cyclePhase }: { cyclePhase: number }) {
           className={`absolute left-0 ${bird.scale} ${bird.rotate}`}
           style={{
             top: bird.top,
-            opacity: (parseInt(bird.opacity.replace("opacity-", "")) / 100) * dayStrength,
-            animation: `${bird.depth === "low" ? "swoopDrift" : "birdDrift"} ${bird.duration} linear infinite`,
-            animationDelay: bird.delay,
+            opacity:
+              (parseInt(bird.opacity.replace("opacity-", "")) / 100) * dayStrength,
+            ...animationStyle(
+              bird.depth === "low" ? "swoopDrift" : "birdDrift",
+              bird.duration,
+              "linear",
+              bird.delay
+            ),
           }}
         >
           <Bird />
@@ -457,7 +576,13 @@ function FragmentBats({
   group,
   nightStrength,
 }: {
-  group: { top: string; delay: string; duration: string; scale: string; opacity: string };
+  group: {
+    top: string;
+    delay: string;
+    duration: string;
+    scale: string;
+    opacity: string;
+  };
   nightStrength: number;
 }) {
   const opacity = (parseInt(group.opacity.replace("opacity-", "")) / 100) * nightStrength;
@@ -469,8 +594,7 @@ function FragmentBats({
         style={{
           top: group.top,
           opacity,
-          animation: `batIntoTreesLeft ${group.duration} ease-in infinite`,
-          animationDelay: group.delay,
+          ...animationStyle("batIntoTreesLeft", group.duration, "ease-in", group.delay),
         }}
       >
         <div className="relative h-12 w-20">
@@ -485,8 +609,7 @@ function FragmentBats({
         style={{
           top: group.top,
           opacity,
-          animation: `batIntoTreesRight ${group.duration} ease-in infinite`,
-          animationDelay: group.delay,
+          ...animationStyle("batIntoTreesRight", group.duration, "ease-in", group.delay),
         }}
       >
         <div className="relative h-12 w-20">
@@ -586,7 +709,11 @@ function ForestFloor() {
       <div className="absolute bottom-[22%] left-0 right-0 h-[12%] bg-[linear-gradient(to_top,_rgba(255,255,255,0.02),_rgba(220,236,220,0.1)_30%,_rgba(245,250,245,0.22)_55%,_rgba(255,255,255,0.28)_70%,_transparent)] blur-xl" />
       <div className="absolute bottom-[24%] left-0 right-0 h-[18%] opacity-95">
         {trees.map((t, i) => (
-          <div key={i} className="absolute bottom-0" style={{ left: t.left, width: t.w, height: t.h, opacity: Number(t.o) }}>
+          <div
+            key={i}
+            className="absolute bottom-0"
+            style={{ left: t.left, width: t.w, height: t.h, opacity: Number(t.o) }}
+          >
             <div className="absolute bottom-0 left-[46%] h-[48%] w-[5%] -translate-x-1/2 rounded-full bg-[#17271a]" />
             <div className="absolute bottom-[18%] left-1/2 h-[58%] w-[88%] -translate-x-1/2 rounded-[999px] bg-[#203524] blur-[1px]" />
             <div className="absolute bottom-[36%] left-[22%] h-[42%] w-[40%] rounded-[999px] bg-[#16251a]" />
@@ -605,224 +732,1784 @@ function ForestFloor() {
   );
 }
 
+function ForegroundForest() {
+  const backRow = [
+    { left: "-14%", scale: 0.74, kind: "pine", opacity: 0.56 },
+    { left: "-8%", scale: 0.68, kind: "round", opacity: 0.52 },
+    { left: "-2%", scale: 0.78, kind: "tall", opacity: 0.57 },
+    { left: "4%", scale: 0.72, kind: "wide", opacity: 0.54 },
+    { left: "9%", scale: 0.76, kind: "pine", opacity: 0.56 },
+    { left: "14%", scale: 0.7, kind: "round", opacity: 0.53 },
+    { left: "19%", scale: 0.8, kind: "tall", opacity: 0.58 },
+    { left: "25%", scale: 0.72, kind: "wide", opacity: 0.54 },
+    { left: "31%", scale: 0.76, kind: "pine", opacity: 0.56 },
+    { left: "37%", scale: 0.7, kind: "round", opacity: 0.52 },
+    { left: "43%", scale: 0.8, kind: "tall", opacity: 0.58 },
+    { left: "49%", scale: 0.72, kind: "wide", opacity: 0.54 },
+    { left: "55%", scale: 0.76, kind: "pine", opacity: 0.56 },
+    { left: "61%", scale: 0.7, kind: "round", opacity: 0.52 },
+    { left: "67%", scale: 0.8, kind: "tall", opacity: 0.58 },
+    { left: "73%", scale: 0.72, kind: "wide", opacity: 0.54 },
+    { left: "79%", scale: 0.76, kind: "pine", opacity: 0.56 },
+    { left: "85%", scale: 0.7, kind: "round", opacity: 0.52 },
+    { left: "91%", scale: 0.8, kind: "tall", opacity: 0.58 },
+    { left: "97%", scale: 0.72, kind: "wide", opacity: 0.54 },
+    { left: "103%", scale: 0.76, kind: "pine", opacity: 0.56 },
+  ] as const;
+
+  const frontRow = [
+    { left: "-16%", scale: 1.12, kind: "pine", opacity: 0.84 },
+    { left: "-10%", scale: 1.02, kind: "round", opacity: 0.78 },
+    { left: "-4%", scale: 1.18, kind: "tall", opacity: 0.86 },
+    { left: "1%", scale: 1.08, kind: "wide", opacity: 0.82 },
+    { left: "6%", scale: 1.14, kind: "pine", opacity: 0.85 },
+    { left: "11%", scale: 1.0, kind: "round", opacity: 0.78 },
+    { left: "16%", scale: 1.12, kind: "tall", opacity: 0.84 },
+    { left: "21%", scale: 1.04, kind: "wide", opacity: 0.8 },
+    { left: "26%", scale: 1.1, kind: "pine", opacity: 0.83 },
+
+    { left: "64%", scale: 1.08, kind: "pine", opacity: 0.82 },
+    { left: "69%", scale: 1.0, kind: "round", opacity: 0.78 },
+    { left: "74%", scale: 1.16, kind: "wide", opacity: 0.85 },
+    { left: "79%", scale: 1.06, kind: "tall", opacity: 0.82 },
+    { left: "84%", scale: 1.18, kind: "pine", opacity: 0.86 },
+    { left: "89%", scale: 1.0, kind: "round", opacity: 0.78 },
+    { left: "94%", scale: 1.12, kind: "tall", opacity: 0.84 },
+    { left: "99%", scale: 1.04, kind: "wide", opacity: 0.8 },
+    { left: "104%", scale: 1.1, kind: "pine", opacity: 0.83 },
+  ] as const;
+
+  return (
+    <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-[70%] overflow-visible">
+      <div className="absolute bottom-[30%] left-0 right-0 h-[12%] bg-[linear-gradient(to_top,_rgba(255,255,255,0.02),_rgba(255,255,255,0.05)_45%,_transparent)] blur-xl" />
+
+      <div className="absolute inset-0">
+        {backRow.map((tree, i) => (
+          <div
+            key={`back-tree-${i}`}
+            className="absolute inset-0"
+            style={{ filter: "blur(0.8px)" }}
+          >
+            <RegularForestTree
+              left={tree.left}
+              bottom="24%"
+              scale={tree.scale * 1.2}
+              kind={tree.kind}
+              opacity={tree.opacity * 1.5}
+              depth="back"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className="absolute inset-0">
+        {frontRow.map((tree, i) => (
+          <RegularForestTree
+            key={`front-tree-${i}`}
+            left={tree.left}
+            bottom="10%"
+            scale={tree.scale}
+            kind={tree.kind}
+            opacity={tree.opacity}
+            depth="front"
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RegularForestTree({
+  left,
+  bottom,
+  scale,
+  kind,
+  opacity,
+  depth,
+}: {
+  left: string;
+  bottom: string;
+  scale: number;
+  kind: "round" | "pine" | "tall" | "wide";
+  opacity: number;
+  depth: "front" | "back";
+}) {
+  const s = scale * 1.2;
+  const height = 320 * s;
+  const width = 170 * s;
+
+  const trunk =
+    depth === "front"
+      ? "bg-[linear-gradient(to_top,_#101612,_#1a241d,_#243127)]"
+      : "bg-[linear-gradient(to_top,_#1a241c,_#253228,_#314236)]";
+
+  const leafA = depth === "front" ? "bg-[#162019]" : "bg-[#243126]";
+  const leafB = depth === "front" ? "bg-[#1d281f]" : "bg-[#2b392d]";
+  const leafC = depth === "front" ? "bg-[#243224]" : "bg-[#334537]";
+  const leafD = depth === "front" ? "bg-[#2c3b2f]" : "bg-[#3b5040]";
+
+  return (
+    <div
+      className="absolute"
+      style={{
+        left,
+        bottom,
+        width: `${width}px`,
+        height: `${height}px`,
+        opacity,
+      }}
+    >
+      <div
+        className="absolute bottom-0 left-1/2 -translate-x-1/2 rounded-full bg-black/28 blur-xl"
+        style={{
+          width: `${92 * s}px`,
+          height: `${18 * s}px`,
+        }}
+      />
+
+      <div
+        className={`absolute bottom-[4%] left-1/2 -translate-x-1/2 ${trunk}`}
+        style={{
+          width: `${14 * s}px`,
+          height: `${108 * s}px`,
+          clipPath: "polygon(22% 100%, 10% 52%, 26% 8%, 74% 8%, 90% 52%, 78% 100%)",
+        }}
+      />
+
+      {kind === "pine" && (
+        <>
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 ${leafC}`}
+            style={{
+              bottom: `${72 * s}px`,
+              width: `${136 * s}px`,
+              height: `${80 * s}px`,
+              clipPath: "polygon(50% 0, 100% 100%, 0 100%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 ${leafB}`}
+            style={{
+              bottom: `${118 * s}px`,
+              width: `${110 * s}px`,
+              height: `${76 * s}px`,
+              clipPath: "polygon(50% 0, 100% 100%, 0 100%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 ${leafA}`}
+            style={{
+              bottom: `${160 * s}px`,
+              width: `${82 * s}px`,
+              height: `${64 * s}px`,
+              clipPath: "polygon(50% 0, 100% 100%, 0 100%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 ${leafD}`}
+            style={{
+              bottom: `${198 * s}px`,
+              width: `${58 * s}px`,
+              height: `${48 * s}px`,
+              clipPath: "polygon(50% 0, 100% 100%, 0 100%)",
+            }}
+          />
+        </>
+      )}
+
+      {kind === "round" && (
+        <>
+          <div
+            className={`absolute ${leafA}`}
+            style={{
+              left: `${18 * s}px`,
+              bottom: `${88 * s}px`,
+              width: `${62 * s}px`,
+              height: `${62 * s}px`,
+              clipPath:
+                "polygon(8% 74%, 16% 28%, 42% 6%, 78% 14%, 96% 42%, 88% 82%, 58% 98%, 20% 92%)",
+            }}
+          />
+          <div
+            className={`absolute ${leafB}`}
+            style={{
+              left: `${48 * s}px`,
+              bottom: `${122 * s}px`,
+              width: `${72 * s}px`,
+              height: `${72 * s}px`,
+              clipPath:
+                "polygon(8% 74%, 16% 28%, 42% 6%, 78% 14%, 96% 42%, 88% 82%, 58% 98%, 20% 92%)",
+            }}
+          />
+          <div
+            className={`absolute ${leafC}`}
+            style={{
+              left: `${82 * s}px`,
+              bottom: `${90 * s}px`,
+              width: `${60 * s}px`,
+              height: `${60 * s}px`,
+              clipPath:
+                "polygon(8% 74%, 16% 28%, 42% 6%, 78% 14%, 96% 42%, 88% 82%, 58% 98%, 20% 92%)",
+            }}
+          />
+          <div
+            className={`absolute ${leafD}`}
+            style={{
+              left: `${44 * s}px`,
+              bottom: `${164 * s}px`,
+              width: `${78 * s}px`,
+              height: `${78 * s}px`,
+              clipPath:
+                "polygon(8% 74%, 16% 28%, 42% 6%, 78% 14%, 96% 42%, 88% 82%, 58% 98%, 20% 92%)",
+            }}
+          />
+        </>
+      )}
+
+      {kind === "tall" && (
+        <>
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 ${leafC}`}
+            style={{
+              bottom: `${86 * s}px`,
+              width: `${96 * s}px`,
+              height: `${90 * s}px`,
+              clipPath:
+                "polygon(18% 100%, 8% 62%, 16% 26%, 36% 8%, 50% 0, 64% 8%, 84% 26%, 92% 62%, 82% 100%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 ${leafB}`}
+            style={{
+              bottom: `${142 * s}px`,
+              width: `${82 * s}px`,
+              height: `${86 * s}px`,
+              clipPath:
+                "polygon(18% 100%, 8% 62%, 16% 26%, 36% 8%, 50% 0, 64% 8%, 84% 26%, 92% 62%, 82% 100%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 ${leafA}`}
+            style={{
+              bottom: `${194 * s}px`,
+              width: `${64 * s}px`,
+              height: `${76 * s}px`,
+              clipPath:
+                "polygon(18% 100%, 8% 62%, 16% 26%, 36% 8%, 50% 0, 64% 8%, 84% 26%, 92% 62%, 82% 100%)",
+            }}
+          />
+        </>
+      )}
+
+      {kind === "wide" && (
+        <>
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 ${leafC}`}
+            style={{
+              bottom: `${84 * s}px`,
+              width: `${156 * s}px`,
+              height: `${58 * s}px`,
+              clipPath:
+                "polygon(4% 78%, 8% 28%, 24% 8%, 52% 0, 80% 8%, 94% 26%, 96% 70%, 82% 94%, 48% 100%, 14% 92%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 ${leafB}`}
+            style={{
+              bottom: `${126 * s}px`,
+              width: `${132 * s}px`,
+              height: `${54 * s}px`,
+              clipPath:
+                "polygon(4% 78%, 8% 28%, 24% 8%, 52% 0, 80% 8%, 94% 26%, 96% 70%, 82% 94%, 48% 100%, 14% 92%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 ${leafA}`}
+            style={{
+              bottom: `${164 * s}px`,
+              width: `${102 * s}px`,
+              height: `${48 * s}px`,
+              clipPath:
+                "polygon(4% 78%, 8% 28%, 24% 8%, 52% 0, 80% 8%, 94% 26%, 96% 70%, 82% 94%, 48% 100%, 14% 92%)",
+            }}
+          />
+          <div
+            className={`absolute left-1/2 -translate-x-1/2 ${leafD}`}
+            style={{
+              bottom: `${198 * s}px`,
+              width: `${74 * s}px`,
+              height: `${40 * s}px`,
+              clipPath:
+                "polygon(4% 78%, 8% 28%, 24% 8%, 52% 0, 80% 8%, 94% 26%, 96% 70%, 82% 94%, 48% 100%, 14% 92%)",
+            }}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+type GrowthStage = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+
+const clampStage = (stage: number): GrowthStage => {
+  return Math.max(1, Math.min(8, stage)) as GrowthStage;
+};
+
+const PAPER_STAGE: Record<
+  number,
+  {
+    scale: number;
+    trunkHeight: number;
+    trunkWidth: number;
+    layerCount: number;
+    particleCount: number;
+  }
+> = {
+  1: { scale: 0.38, trunkHeight: 34, trunkWidth: 5, layerCount: 1, particleCount: 0 },
+  2: { scale: 0.48, trunkHeight: 48, trunkWidth: 6, layerCount: 1, particleCount: 1 },
+  3: { scale: 0.58, trunkHeight: 70, trunkWidth: 8, layerCount: 2, particleCount: 2 },
+  4: { scale: 0.72, trunkHeight: 112, trunkWidth: 12, layerCount: 3, particleCount: 4 },
+  5: { scale: 0.86, trunkHeight: 142, trunkWidth: 15, layerCount: 4, particleCount: 6 },
+  6: { scale: 1.0, trunkHeight: 172, trunkWidth: 18, layerCount: 4, particleCount: 8 },
+  7: { scale: 1.12, trunkHeight: 198, trunkWidth: 20, layerCount: 5, particleCount: 10 },
+  8: { scale: 1.24, trunkHeight: 226, trunkWidth: 22, layerCount: 5, particleCount: 12 },
+};
+
+const PAPER_PARTICLES = [
+  { left: "30%", bottom: "47%", size: 5, opacity: 0.42, delay: "0s" },
+  { left: "38%", bottom: "56%", size: 4, opacity: 0.55, delay: "-0.5s" },
+  { left: "46%", bottom: "63%", size: 5, opacity: 0.58, delay: "-1.2s" },
+  { left: "56%", bottom: "54%", size: 6, opacity: 0.48, delay: "-1.8s" },
+  { left: "63%", bottom: "66%", size: 4, opacity: 0.46, delay: "-0.8s" },
+  { left: "70%", bottom: "51%", size: 5, opacity: 0.4, delay: "-2.4s" },
+  { left: "43%", bottom: "73%", size: 4, opacity: 0.44, delay: "-2.1s" },
+  { left: "52%", bottom: "76%", size: 5, opacity: 0.42, delay: "-0.2s" },
+  { left: "61%", bottom: "71%", size: 4, opacity: 0.38, delay: "-1.5s" },
+  { left: "33%", bottom: "66%", size: 4, opacity: 0.42, delay: "-2.8s" },
+  { left: "49%", bottom: "49%", size: 3, opacity: 0.5, delay: "-0.9s" },
+  { left: "58%", bottom: "60%", size: 4, opacity: 0.46, delay: "-1.9s" },
+];
+
+const PAPER_CLOUD =
+  "polygon(6% 72%, 14% 32%, 28% 14%, 52% 6%, 76% 14%, 92% 34%, 96% 64%, 84% 88%, 58% 98%, 26% 94%)";
+const PAPER_SHELF =
+  "polygon(4% 78%, 8% 28%, 24% 8%, 52% 0, 80% 8%, 94% 26%, 96% 70%, 82% 94%, 48% 100%, 14% 92%)";
+const PAPER_SPIRE =
+  "polygon(24% 100%, 8% 64%, 14% 26%, 34% 8%, 50% 0, 66% 8%, 86% 26%, 92% 64%, 76% 100%)";
+const PAPER_FLAME =
+  "polygon(18% 100%, 10% 72%, 18% 36%, 34% 10%, 50% 0, 66% 12%, 82% 38%, 90% 74%, 82% 100%, 54% 88%, 34% 96%)";
+const PAPER_DRAPE =
+  "polygon(28% 0, 72% 0, 100% 20%, 86% 100%, 14% 100%, 0 20%)";
+const PAPER_CRYSTAL =
+  "polygon(50% 0, 82% 18%, 100% 52%, 78% 100%, 22% 100%, 0 52%, 18% 18%)";
+const PAPER_FAN =
+  "polygon(6% 82%, 12% 36%, 30% 12%, 52% 4%, 74% 10%, 90% 30%, 96% 74%, 84% 96%, 48% 100%, 16% 94%)";
+const PAPER_SEED =
+  "polygon(50% 0, 82% 18%, 100% 54%, 74% 100%, 26% 100%, 0 54%, 18% 18%)";
+
+function scalePx(value: number, scale: number) {
+  return Math.round(value * scale);
+}
+
+type PaperLayer = {
+  x: number;
+  bottom: number;
+  width: number;
+  height: number;
+  rotate: number;
+  tone: string;
+  shape: string;
+  opacity: number;
+};
+
+type PaperBranch = {
+  x: number;
+  bottom: number;
+  width: number;
+  height: number;
+  rotate: number;
+};
+
+type SpeciesProfile = {
+  glow: { width: number; height: number; bottom: number; opacity: number };
+  shadow: { width: number; height: number; bottom: number; shape: string };
+  branches: PaperBranch[];
+  layers: PaperLayer[];
+};
+
+function getSpeciesProfile(variant: TreeKey, p: Palette): SpeciesProfile {
+  switch (variant) {
+    case "oak":
+      return {
+        glow: { width: 120, height: 70, bottom: 164, opacity: 0.68 },
+        shadow: { width: 214, height: 104, bottom: 142, shape: PAPER_SHELF },
+        branches: [
+          { x: 0, bottom: 68, width: 10, height: 58, rotate: 0 },
+          { x: -8, bottom: 106, width: 8, height: 40, rotate: -26 },
+          { x: 8, bottom: 108, width: 8, height: 42, rotate: 28 },
+        ],
+        layers: [
+          {
+            x: 0,
+            bottom: 132,
+            width: 212,
+            height: 62,
+            rotate: 0,
+            tone: p.leaf4,
+            shape: PAPER_SHELF,
+            opacity: 0.94,
+          },
+          {
+            x: -46,
+            bottom: 166,
+            width: 170,
+            height: 78,
+            rotate: -8,
+            tone: p.leaf1,
+            shape: PAPER_SHELF,
+            opacity: 0.96,
+          },
+          {
+            x: 48,
+            bottom: 166,
+            width: 170,
+            height: 76,
+            rotate: 8,
+            tone: p.leaf2,
+            shape: PAPER_SHELF,
+            opacity: 0.96,
+          },
+          {
+            x: 0,
+            bottom: 204,
+            width: 188,
+            height: 72,
+            rotate: 0,
+            tone: p.leaf3,
+            shape: PAPER_FAN,
+            opacity: 0.95,
+          },
+          {
+            x: 0,
+            bottom: 238,
+            width: 130,
+            height: 56,
+            rotate: 0,
+            tone: p.leaf2,
+            shape: PAPER_CLOUD,
+            opacity: 0.9,
+          },
+        ],
+      };
+
+    case "willow":
+      return {
+        glow: { width: 126, height: 78, bottom: 170, opacity: 0.72 },
+        shadow: { width: 170, height: 122, bottom: 148, shape: PAPER_CLOUD },
+        branches: [
+          { x: 0, bottom: 66, width: 10, height: 72, rotate: 0 },
+          { x: -6, bottom: 112, width: 6, height: 42, rotate: -18 },
+          { x: 6, bottom: 112, width: 6, height: 42, rotate: 18 },
+        ],
+        layers: [
+          {
+            x: 0,
+            bottom: 146,
+            width: 168,
+            height: 72,
+            rotate: 0,
+            tone: p.leaf4,
+            shape: PAPER_CLOUD,
+            opacity: 0.9,
+          },
+          {
+            x: -36,
+            bottom: 176,
+            width: 150,
+            height: 124,
+            rotate: -12,
+            tone: p.leaf1,
+            shape: PAPER_DRAPE,
+            opacity: 0.96,
+          },
+          {
+            x: 38,
+            bottom: 176,
+            width: 150,
+            height: 124,
+            rotate: 12,
+            tone: p.leaf2,
+            shape: PAPER_DRAPE,
+            opacity: 0.96,
+          },
+          {
+            x: 0,
+            bottom: 206,
+            width: 162,
+            height: 92,
+            rotate: 0,
+            tone: p.leaf3,
+            shape: PAPER_FAN,
+            opacity: 0.94,
+          },
+          {
+            x: 0,
+            bottom: 244,
+            width: 106,
+            height: 56,
+            rotate: 0,
+            tone: p.leaf2,
+            shape: PAPER_CLOUD,
+            opacity: 0.88,
+          },
+        ],
+      };
+
+    case "blossom":
+      return {
+        glow: { width: 140, height: 84, bottom: 176, opacity: 0.84 },
+        shadow: { width: 204, height: 116, bottom: 154, shape: PAPER_CLOUD },
+        branches: [
+          { x: 0, bottom: 66, width: 9, height: 64, rotate: 0 },
+          { x: -10, bottom: 110, width: 6, height: 34, rotate: -30 },
+          { x: 10, bottom: 110, width: 6, height: 34, rotate: 30 },
+        ],
+        layers: [
+          {
+            x: 0,
+            bottom: 138,
+            width: 150,
+            height: 72,
+            rotate: 0,
+            tone: p.leaf4,
+            shape: PAPER_CLOUD,
+            opacity: 0.9,
+          },
+          {
+            x: -44,
+            bottom: 176,
+            width: 142,
+            height: 92,
+            rotate: -10,
+            tone: p.leaf1,
+            shape: PAPER_CLOUD,
+            opacity: 0.96,
+          },
+          {
+            x: 44,
+            bottom: 176,
+            width: 142,
+            height: 92,
+            rotate: 10,
+            tone: p.leaf2,
+            shape: PAPER_CLOUD,
+            opacity: 0.96,
+          },
+          {
+            x: 0,
+            bottom: 212,
+            width: 176,
+            height: 106,
+            rotate: 0,
+            tone: p.leaf3,
+            shape: PAPER_CLOUD,
+            opacity: 0.95,
+          },
+          {
+            x: 0,
+            bottom: 252,
+            width: 120,
+            height: 68,
+            rotate: 0,
+            tone: p.leaf2,
+            shape: PAPER_CLOUD,
+            opacity: 0.88,
+          },
+        ],
+      };
+
+    case "moon":
+      return {
+        glow: { width: 116, height: 92, bottom: 188, opacity: 0.92 },
+        shadow: { width: 150, height: 132, bottom: 162, shape: PAPER_SPIRE },
+        branches: [
+          { x: 0, bottom: 68, width: 9, height: 76, rotate: 0 },
+          { x: -8, bottom: 118, width: 5, height: 34, rotate: -22 },
+          { x: 8, bottom: 118, width: 5, height: 34, rotate: 22 },
+        ],
+        layers: [
+          {
+            x: 0,
+            bottom: 144,
+            width: 134,
+            height: 70,
+            rotate: 0,
+            tone: p.leaf4,
+            shape: PAPER_SPIRE,
+            opacity: 0.9,
+          },
+          {
+            x: -30,
+            bottom: 182,
+            width: 106,
+            height: 106,
+            rotate: -6,
+            tone: p.leaf1,
+            shape: PAPER_SPIRE,
+            opacity: 0.95,
+          },
+          {
+            x: 30,
+            bottom: 182,
+            width: 106,
+            height: 106,
+            rotate: 6,
+            tone: p.leaf2,
+            shape: PAPER_SPIRE,
+            opacity: 0.95,
+          },
+          {
+            x: 0,
+            bottom: 220,
+            width: 138,
+            height: 134,
+            rotate: 0,
+            tone: p.leaf3,
+            shape: PAPER_SPIRE,
+            opacity: 0.95,
+          },
+          {
+            x: 0,
+            bottom: 270,
+            width: 84,
+            height: 74,
+            rotate: 0,
+            tone: p.leaf2,
+            shape: PAPER_CRYSTAL,
+            opacity: 0.88,
+          },
+        ],
+      };
+
+    case "firefly":
+      return {
+        glow: { width: 132, height: 84, bottom: 172, opacity: 0.82 },
+        shadow: { width: 196, height: 112, bottom: 150, shape: PAPER_FAN },
+        branches: [
+          { x: 0, bottom: 66, width: 9, height: 64, rotate: 0 },
+          { x: -10, bottom: 106, width: 6, height: 40, rotate: -28 },
+          { x: 12, bottom: 112, width: 6, height: 48, rotate: 34 },
+        ],
+        layers: [
+          {
+            x: -8,
+            bottom: 136,
+            width: 140,
+            height: 74,
+            rotate: -4,
+            tone: p.leaf4,
+            shape: PAPER_FAN,
+            opacity: 0.9,
+          },
+          {
+            x: -42,
+            bottom: 174,
+            width: 132,
+            height: 94,
+            rotate: -14,
+            tone: p.leaf1,
+            shape: PAPER_FLAME,
+            opacity: 0.96,
+          },
+          {
+            x: 52,
+            bottom: 180,
+            width: 150,
+            height: 104,
+            rotate: 12,
+            tone: p.leaf2,
+            shape: PAPER_FLAME,
+            opacity: 0.96,
+          },
+          {
+            x: 8,
+            bottom: 216,
+            width: 160,
+            height: 110,
+            rotate: 4,
+            tone: p.leaf3,
+            shape: PAPER_CLOUD,
+            opacity: 0.94,
+          },
+          {
+            x: 18,
+            bottom: 254,
+            width: 102,
+            height: 66,
+            rotate: 8,
+            tone: p.leaf2,
+            shape: PAPER_FLAME,
+            opacity: 0.88,
+          },
+        ],
+      };
+
+    case "silver":
+      return {
+        glow: { width: 122, height: 88, bottom: 182, opacity: 0.88 },
+        shadow: { width: 176, height: 116, bottom: 156, shape: PAPER_CRYSTAL },
+        branches: [
+          { x: 0, bottom: 68, width: 9, height: 70, rotate: 0 },
+          { x: -8, bottom: 114, width: 5, height: 34, rotate: -24 },
+          { x: 8, bottom: 114, width: 5, height: 34, rotate: 24 },
+        ],
+        layers: [
+          {
+            x: 0,
+            bottom: 142,
+            width: 144,
+            height: 66,
+            rotate: 0,
+            tone: p.leaf4,
+            shape: PAPER_CRYSTAL,
+            opacity: 0.9,
+          },
+          {
+            x: -34,
+            bottom: 180,
+            width: 122,
+            height: 90,
+            rotate: -8,
+            tone: p.leaf1,
+            shape: PAPER_CRYSTAL,
+            opacity: 0.96,
+          },
+          {
+            x: 34,
+            bottom: 182,
+            width: 122,
+            height: 90,
+            rotate: 8,
+            tone: p.leaf2,
+            shape: PAPER_CRYSTAL,
+            opacity: 0.96,
+          },
+          {
+            x: 0,
+            bottom: 220,
+            width: 150,
+            height: 108,
+            rotate: 0,
+            tone: p.leaf3,
+            shape: PAPER_FAN,
+            opacity: 0.94,
+          },
+          {
+            x: 0,
+            bottom: 264,
+            width: 90,
+            height: 72,
+            rotate: 0,
+            tone: p.leaf2,
+            shape: PAPER_CRYSTAL,
+            opacity: 0.88,
+          },
+        ],
+      };
+
+    case "golden":
+    default:
+      return {
+        glow: { width: 132, height: 84, bottom: 174, opacity: 0.8 },
+        shadow: { width: 192, height: 114, bottom: 150, shape: PAPER_FLAME },
+        branches: [
+          { x: 0, bottom: 68, width: 9, height: 64, rotate: 0 },
+          { x: -9, bottom: 108, width: 6, height: 40, rotate: -30 },
+          { x: 10, bottom: 112, width: 6, height: 44, rotate: 32 },
+        ],
+        layers: [
+          {
+            x: 0,
+            bottom: 138,
+            width: 150,
+            height: 72,
+            rotate: -2,
+            tone: p.leaf4,
+            shape: PAPER_FLAME,
+            opacity: 0.9,
+          },
+          {
+            x: -42,
+            bottom: 176,
+            width: 138,
+            height: 94,
+            rotate: -12,
+            tone: p.leaf1,
+            shape: PAPER_FLAME,
+            opacity: 0.96,
+          },
+          {
+            x: 36,
+            bottom: 182,
+            width: 126,
+            height: 88,
+            rotate: 10,
+            tone: p.leaf2,
+            shape: PAPER_FLAME,
+            opacity: 0.96,
+          },
+          {
+            x: 2,
+            bottom: 220,
+            width: 158,
+            height: 108,
+            rotate: 2,
+            tone: p.leaf3,
+            shape: PAPER_FLAME,
+            opacity: 0.94,
+          },
+          {
+            x: 8,
+            bottom: 262,
+            width: 92,
+            height: 70,
+            rotate: 6,
+            tone: p.leaf2,
+            shape: PAPER_FLAME,
+            opacity: 0.88,
+          },
+        ],
+      };
+  }
+}
+
+type HeroEffectProfile = {
+  sway: number;
+  glow: number;
+  particles: number;
+  parallax: number;
+};
+
+const HERO_EFFECTS: Record<TreeKey, HeroEffectProfile> = {
+  golden: {
+    sway: 0,
+    glow: 0.9,
+    particles: 0.15,
+    parallax: 10,
+  },
+  oak: {
+    sway: 0,
+    glow: 0.12,
+    particles: 0,
+    parallax: 0.08,
+  },
+  blossom: {
+    sway: 5,
+    glow: 0.4,
+    particles: 1,
+    parallax: 3,
+  },
+  firefly: {
+    sway: 0.08,
+    glow: 0,
+    particles: 1,
+    parallax: 0.14,
+  },
+  moon: {
+    sway: 0.04,
+    glow: 0,
+    particles: 0.2,
+    parallax: 10,
+  },
+  silver: {
+    sway: 0.05,
+    glow: 0.2,
+    particles: 0.18,
+    parallax: 0.1,
+  },
+  willow: {
+    sway: 1,
+    glow: 0,
+    particles: 0.08,
+    parallax: 0,
+  },
+};
+
+const TREE_MOTION: Record<
+  GrowthStage,
+  {
+    sway: number;
+    bob: number;
+    duration: number;
+    glow: number;
+    layer: number;
+    particle: number;
+  }
+> = {
+  1: { sway: 0.15, bob: 0.4, duration: 8.2, glow: 0.03, layer: 0.08, particle: 1.0 },
+  2: { sway: 0.2, bob: 0.5, duration: 8.0, glow: 0.04, layer: 0.1, particle: 1.2 },
+  3: { sway: 0.25, bob: 0.7, duration: 7.8, glow: 0.05, layer: 0.14, particle: 1.4 },
+  4: { sway: 0.35, bob: 0.9, duration: 7.5, glow: 0.06, layer: 0.18, particle: 1.8 },
+  5: { sway: 0.5, bob: 1.2, duration: 7.2, glow: 0.08, layer: 0.24, particle: 2.2 },
+  6: { sway: 0.65, bob: 1.5, duration: 7.0, glow: 0.1, layer: 0.3, particle: 2.6 },
+  7: { sway: 0.8, bob: 1.8, duration: 6.8, glow: 0.12, layer: 0.36, particle: 3.0 },
+  8: { sway: 1.0, bob: 2.2, duration: 6.6, glow: 0.14, layer: 0.42, particle: 3.4 },
+};
+
+const TREE_PHASE_DELAY: Record<TreeKey, string> = {
+  golden: "-0.4s",
+  willow: "-1.3s",
+  blossom: "-2.1s",
+  moon: "-0.9s",
+  oak: "-1.8s",
+  firefly: "-2.8s",
+  silver: "-1.1s",
+};
+
+function ForestMotionStyles() {
+  return (
+    <style>{`
+      @keyframes heroTreeSway {
+        0%, 100% {
+          transform: rotate(calc(var(--hero-sway) * -1)) translateY(0px);
+        }
+        25% {
+          transform: rotate(calc(var(--hero-sway) * -0.35)) translateY(calc(var(--hero-bob) * -0.35));
+        }
+        50% {
+          transform: rotate(var(--hero-sway)) translateY(calc(var(--hero-bob) * -1));
+        }
+        75% {
+          transform: rotate(calc(var(--hero-sway) * 0.2)) translateY(calc(var(--hero-bob) * -0.45));
+        }
+      }
+
+      @keyframes heroGlowPulse {
+        0%, 100% {
+          transform: translateX(-50%) scale(0.96);
+          opacity: var(--glow-opacity);
+        }
+        50% {
+          transform: translateX(-50%) scale(calc(1 + var(--glow-grow)));
+          opacity: calc(var(--glow-opacity) + 0.08);
+        }
+      }
+
+      @keyframes paperLayerSway {
+        0%, 100% {
+          transform: translateX(-50%) rotate(calc(var(--layer-rotate) - var(--layer-sway)));
+        }
+        50% {
+          transform:
+            translateX(-50%)
+            translateY(calc(var(--layer-lift) * -1))
+            rotate(calc(var(--layer-rotate) + var(--layer-sway)));
+        }
+      }
+
+      @keyframes heroParticleFloat {
+        0%, 100% {
+          transform: translateY(0px) translateX(0px) scale(0.96);
+          opacity: calc(var(--particle-opacity) * 0.88);
+        }
+        50% {
+          transform:
+            translateY(calc(var(--particle-rise) * -1))
+            translateX(var(--particle-drift))
+            scale(1.08);
+          opacity: var(--particle-opacity);
+        }
+      }
+    `}</style>
+  );
+}
+
+function getHeroGlow(variant: TreeKey) {
+  switch (variant) {
+    case "golden":
+      return {
+        backdrop:
+          "radial-gradient(circle at 50% 55%, rgba(18,10,4,0.34) 0%, rgba(18,10,4,0.2) 42%, transparent 76%)",
+        outer:
+          "radial-gradient(circle at 50% 52%, rgba(255,248,214,0.96) 0%, rgba(255,208,116,0.72) 22%, rgba(255,144,56,0.34) 48%, rgba(255,96,24,0.12) 66%, transparent 82%)",
+        inner:
+          "radial-gradient(circle at 50% 48%, rgba(255,255,240,0.95) 0%, rgba(255,239,186,0.78) 42%, transparent 78%)",
+      };
+
+    case "willow":
+      return {
+        backdrop:
+          "radial-gradient(circle at 50% 55%, rgba(4,14,10,0.3) 0%, rgba(4,14,10,0.18) 44%, transparent 76%)",
+        outer:
+          "radial-gradient(circle at 50% 52%, rgba(218,255,240,0.72) 0%, rgba(92,214,170,0.42) 24%, rgba(24,122,92,0.22) 52%, transparent 82%)",
+        inner:
+          "radial-gradient(circle at 50% 48%, rgba(235,255,245,0.7) 0%, rgba(180,255,220,0.4) 42%, transparent 78%)",
+      };
+
+    case "blossom":
+      return {
+        backdrop:
+          "radial-gradient(circle at 50% 55%, rgba(22,8,14,0.26) 0%, rgba(22,8,14,0.16) 42%, transparent 76%)",
+        outer:
+          "radial-gradient(circle at 50% 52%, rgba(255,248,252,0.94) 0%, rgba(255,201,228,0.62) 22%, rgba(255,144,196,0.28) 48%, rgba(255,110,182,0.1) 68%, transparent 82%)",
+        inner:
+          "radial-gradient(circle at 50% 48%, rgba(255,255,255,0.92) 0%, rgba(255,233,244,0.72) 46%, transparent 78%)",
+      };
+
+    case "moon":
+      return {
+        backdrop:
+          "radial-gradient(circle at 50% 55%, rgba(6,10,22,0.34) 0%, rgba(6,10,22,0.2) 44%, transparent 78%)",
+        outer:
+          "radial-gradient(circle at 50% 52%, rgba(255,255,255,0.96) 0%, rgba(199,236,255,0.62) 24%, rgba(110,196,255,0.3) 48%, rgba(90,120,255,0.1) 68%, transparent 84%)",
+        inner:
+          "radial-gradient(circle at 50% 48%, rgba(255,255,255,0.98) 0%, rgba(240,249,255,0.82) 42%, transparent 76%)",
+      };
+
+    case "oak":
+      return {
+        backdrop:
+          "radial-gradient(circle at 50% 55%, rgba(10,12,6,0.3) 0%, rgba(10,12,6,0.18) 42%, transparent 76%)",
+        outer:
+          "radial-gradient(circle at 50% 52%, rgba(244,255,214,0.58) 0%, rgba(168,214,88,0.34) 24%, rgba(88,132,36,0.18) 52%, transparent 82%)",
+        inner:
+          "radial-gradient(circle at 50% 48%, rgba(245,255,224,0.54) 0%, rgba(212,255,168,0.26) 42%, transparent 76%)",
+      };
+
+    case "firefly":
+      return {
+        backdrop:
+          "radial-gradient(circle at 50% 55%, rgba(14,12,4,0.34) 0%, rgba(14,12,4,0.2) 44%, transparent 78%)",
+        outer:
+          "radial-gradient(circle at 50% 52%, rgba(255,252,204,0.94) 0%, rgba(249,255,122,0.68) 22%, rgba(169,255,76,0.3) 48%, rgba(74,160,54,0.1) 68%, transparent 84%)",
+        inner:
+          "radial-gradient(circle at 50% 48%, rgba(255,255,236,0.98) 0%, rgba(255,249,186,0.82) 42%, transparent 76%)",
+      };
+
+    case "silver":
+      return {
+        backdrop:
+          "radial-gradient(circle at 50% 55%, rgba(8,12,18,0.3) 0%, rgba(8,12,18,0.18) 44%, transparent 78%)",
+        outer:
+          "radial-gradient(circle at 50% 52%, rgba(255,255,255,0.92) 0%, rgba(226,236,246,0.56) 22%, rgba(174,190,214,0.26) 48%, rgba(130,146,172,0.1) 68%, transparent 84%)",
+        inner:
+          "radial-gradient(circle at 50% 48%, rgba(255,255,255,0.98) 0%, rgba(248,251,255,0.78) 40%, transparent 74%)",
+      };
+  }
+}
+
+const TREE_SIZE_MULTIPLIER = 1.35;
+
 function ForestSpot({ stage, variant }: { stage: number; variant: TreeKey }) {
+  const motion = TREE_MOTION[clampStage(stage)];
+  const effects = HERO_EFFECTS[variant];
+
+  const swayAmount = motion.sway * effects.sway;
+  const bobAmount = motion.bob * effects.sway;
+
   return (
     <div className="relative flex flex-col items-center">
-      <div className="relative h-64 w-40 md:h-72 md:w-44">
-        <div className="absolute bottom-0 left-1/2 h-6 w-24 -translate-x-1/2 rounded-full bg-slate-900/20 blur-md" />
-        <GroundPatch variant={variant} />
-        <Stump />
-        <TreeGrowth stage={stage} variant={variant} />
+      <div className="relative h-[28rem] w-[16rem] overflow-visible md:h-[32rem] md:w-[18rem]">
+        <div
+          className="absolute bottom-0 left-1/2 origin-bottom"
+          style={{
+            transform: `translateX(-50%) scale(${TREE_SIZE_MULTIPLIER})`,
+          }}
+        >
+          <div className="relative h-[28rem] w-[16rem] md:h-[32rem] md:w-[18rem]">
+            <div className="absolute bottom-[1.25rem] left-1/2 h-8 w-28 -translate-x-1/2 rounded-full bg-slate-950/25 blur-lg" />
+            {stage >= 4 && <GroundPatch variant={variant} />}
+
+
+            <div
+              className="absolute inset-0 origin-bottom"
+              style={
+                swayAmount > 0.02
+                  ? ({
+                      ...animationStyle(
+                        "heroTreeSway",
+                        `${motion.duration}s`,
+                        "ease-in-out",
+                        TREE_PHASE_DELAY[variant]
+                      ),
+                      transformOrigin: "center bottom",
+                      ["--hero-sway" as any]: `${swayAmount}deg`,
+                      ["--hero-bob" as any]: `${bobAmount}px`,
+                    } as CSSProperties)
+                  : undefined
+              }
+            >
+              <TreeGrowth stage={stage} variant={variant} />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
 function GroundPatch({ variant }: { variant: TreeKey }) {
-  const p = PALETTES[variant];
   return (
     <>
-      <div className="absolute bottom-2 left-1/2 h-10 w-32 -translate-x-1/2 rounded-[999px] bg-[radial-gradient(circle_at_center,_rgba(170,120,76,0.9),_rgba(121,85,56,0.92)_55%,_rgba(82,56,40,0.98)_100%)] shadow-[0_12px_40px_rgba(61,35,16,0.35)]" />
-      <div className="absolute bottom-6 left-1/2 h-3 w-24 -translate-x-1/2 rounded-full bg-white/20 blur-sm" />
-      <div className={`absolute bottom-3 left-[26%] h-6 w-3 rounded-full ${p.grass1} rotate-[-20deg]`} />
-      <div className={`absolute bottom-5 left-[28%] h-4 w-5 rounded-full ${p.grass2}`} />
-      <div className={`absolute bottom-2 right-[24%] h-7 w-3 rounded-full ${p.grass1} rotate-[14deg]`} />
-      <div className={`absolute bottom-4 right-[22%] h-4 w-5 rounded-full ${p.grass2}`} />
+      <div className="absolute bottom-[1.55rem] left-1/2 h-6 w-22 -translate-x-1/2 rounded-[999px] bg-[#1e1712]/32 blur-lg" />
+      <div
+        className="absolute bottom-[1.7rem] left-1/2 h-9 w-24 -translate-x-1/2 bg-[linear-gradient(to_bottom,_#6e4a31,_#543623_56%,_#342116_100%)]"
+        style={{
+          clipPath:
+            "polygon(10% 64%, 20% 32%, 42% 12%, 70% 16%, 88% 42%, 84% 76%, 60% 92%, 20% 88%)",
+          boxShadow: "0 10px 18px rgba(35, 20, 10, 0.22)",
+        }}
+      />
+      <div
+        className="absolute bottom-[2.35rem] left-1/2 h-4 w-18 -translate-x-1/2 bg-white/8"
+        style={{
+          clipPath:
+            "polygon(12% 66%, 22% 34%, 46% 12%, 72% 22%, 88% 48%, 82% 74%, 58% 88%, 20% 84%)",
+          filter: "blur(1.5px)",
+        }}
+      />
     </>
   );
 }
 
-function Stump() {
-  return (
-    <>
-      <div className="absolute bottom-8 left-1/2 h-12 w-16 -translate-x-1/2 rounded-b-[1.3rem] rounded-t-[1rem] bg-[linear-gradient(to_bottom,_#9a6a42,_#7c5333_55%,_#654127_100%)] shadow-lg" />
-      <div className="absolute bottom-[3.7rem] left-1/2 h-4 w-16 -translate-x-1/2 rounded-full border border-[#7f5737]/50 bg-[radial-gradient(circle_at_center,_#c08e60,_#8c623d_68%,_#71492a_100%)]" />
-      <div className="absolute bottom-10 left-[47%] h-7 w-[2px] bg-[#5e3a24]/35" />
-      <div className="absolute bottom-10 left-[52%] h-6 w-[2px] bg-[#5e3a24]/35" />
-    </>
-  );
-}
 
 function TreeGrowth({ stage, variant }: { stage: number; variant: TreeKey }) {
+  const s = clampStage(stage);
+
+  if (s === 1) return <PaperBud variant={variant} />;
+  if (s === 2) return <PaperSprout variant={variant} />;
+  if (s === 3) return <PaperSapling variant={variant} />;
+
+  return <PaperCanopyTree stage={s} variant={variant} />;
+}
+
+function PaperBud({ variant }: { variant: TreeKey }) {
+  const p = PALETTES[variant];
+
   return (
-    <div className="absolute inset-0">
-      {stage >= 1 && <Bud variant={variant} />}
-      {stage >= 2 && <Sprout variant={variant} />}
-      {stage >= 3 && <Sapling variant={variant} />}
-      {stage >= 4 && <YoungTree variant={variant} />}
-      {stage >= 5 && <GrandTree variant={variant} />}
-      {stage >= 6 && <AncientTree variant={variant} />}
-      {stage >= 7 && <MythicTree variant={variant} />}
-      {stage >= 8 && <WorldTree variant={variant} />}
+    <>
+      <div className={`absolute bottom-[4.55rem] left-1/2 h-8 w-[0.35rem] -translate-x-1/2 rounded-full ${p.trunk}`} />
+      <div className={`absolute bottom-[5.65rem] left-1/2 h-8 w-8 -translate-x-1/2 rounded-full ${p.glow} blur-xl opacity-80`} />
+      <div
+        className={`absolute bottom-[5.9rem] left-[44%] h-4 w-7 ${p.leaf1}`}
+        style={{ clipPath: PAPER_SEED, transform: "rotate(-18deg)" }}
+      />
+      <div
+        className={`absolute bottom-[6rem] left-[50%] h-4 w-7 ${p.leaf2}`}
+        style={{ clipPath: PAPER_SEED, transform: "rotate(20deg)" }}
+      />
+    </>
+  );
+}
+
+function PaperSprout({ variant }: { variant: TreeKey }) {
+  const p = PALETTES[variant];
+
+  return (
+    <>
+      <div className={`absolute bottom-[4.45rem] left-1/2 h-12 w-[0.45rem] -translate-x-1/2 rounded-full ${p.trunk}`} />
+      <div className={`absolute bottom-[6.3rem] left-1/2 h-10 w-10 -translate-x-1/2 rounded-full ${p.glow} blur-xl opacity-80`} />
+      <div
+        className={`absolute bottom-[6rem] left-[41%] h-5 w-9 ${p.leaf1}`}
+        style={{ clipPath: PAPER_SEED, transform: "rotate(-22deg)" }}
+      />
+      <div
+        className={`absolute bottom-[6.8rem] left-[50%] h-5 w-9 ${p.leaf2}`}
+        style={{ clipPath: PAPER_SEED, transform: "rotate(24deg)" }}
+      />
+      <div
+        className={`absolute bottom-[7.55rem] left-[46.8%] h-4 w-7 ${p.leaf3}`}
+        style={{ clipPath: PAPER_SEED }}
+      />
+    </>
+  );
+}
+
+function PaperSapling({ variant }: { variant: TreeKey }) {
+  const p = PALETTES[variant];
+  const willow = variant === "willow";
+
+  return (
+    <>
+      <div className={`absolute bottom-[4.2rem] left-1/2 h-20 w-[0.55rem] -translate-x-1/2 rounded-full ${p.trunk}`} />
+      <div className="absolute bottom-[8.8rem] left-1/2 h-8 w-[2px] -translate-x-1/2 bg-[#61402b]/80 rotate-[28deg]" />
+      <div className="absolute bottom-[9rem] left-1/2 h-8 w-[2px] -translate-x-1/2 bg-[#61402b]/80 -rotate-[30deg]" />
+      <div className={`absolute bottom-[8.8rem] left-1/2 h-14 w-16 -translate-x-1/2 rounded-full ${p.glow} blur-2xl opacity-85`} />
+      <div
+        className={`absolute bottom-[8.4rem] left-[38%] h-8 w-12 ${p.leaf1}`}
+        style={{ clipPath: PAPER_CLOUD, transform: "rotate(-12deg)" }}
+      />
+      <div
+        className={`absolute bottom-[10rem] left-[50%] h-8 w-12 ${p.leaf2}`}
+        style={{ clipPath: PAPER_CLOUD, transform: "rotate(12deg)" }}
+      />
+      <div
+        className={`absolute bottom-[10.8rem] left-[44%] h-8 w-12 ${p.leaf3}`}
+        style={{ clipPath: PAPER_FAN }}
+      />
+      {willow && (
+        <>
+          <div
+            className={`absolute bottom-[8.3rem] left-[39%] h-12 w-[7px] ${p.leaf2} opacity-80`}
+            style={{ clipPath: PAPER_DRAPE }}
+          />
+          <div
+            className={`absolute bottom-[8.7rem] left-[58%] h-12 w-[7px] ${p.leaf1} opacity-80`}
+            style={{ clipPath: PAPER_DRAPE }}
+          />
+        </>
+      )}
+    </>
+  );
+}
+
+function PaperCanopyTree({ stage, variant }: { stage: number; variant: TreeKey }) {
+  const p = PALETTES[variant];
+  const glowPalette = getHeroGlow(variant);
+  const cfg = PAPER_STAGE[stage];
+  const motion = TREE_MOTION[clampStage(stage)];
+  const effects = HERO_EFFECTS[variant];
+  const profile = getSpeciesProfile(variant, p);
+
+  const layers = profile.layers.slice(0, cfg.layerCount);
+  const backLayers = layers.slice(0, Math.max(1, cfg.layerCount - 2));
+  const frontLayers = layers.slice(Math.max(1, cfg.layerCount - 2));
+
+  const glowStrength = motion.glow * effects.glow;
+  const parallaxStrength = motion.layer * effects.parallax;
+  const particleStrength = motion.particle * effects.particles;
+
+  const outerGlowOpacity = Math.min(
+    1,
+    profile.glow.opacity + 0.16 + glowStrength * 0.22
+  );
+
+  return (
+    <div
+      className="absolute bottom-[3.35rem] left-1/2 -translate-x-1/2"
+      style={{
+        width: `${scalePx(260, cfg.scale)}px`,
+        height: `${scalePx(360, cfg.scale)}px`,
+      }}
+    >
+      <div
+        className={`absolute left-1/2 bottom-0 ${p.trunk}`}
+        style={{
+          width: `${cfg.trunkWidth}px`,
+          height: `${cfg.trunkHeight}px`,
+          transform: "translateX(-50%)",
+          clipPath:
+            "polygon(20% 100%, 10% 58%, 22% 18%, 38% 0, 62% 0, 78% 18%, 90% 58%, 80% 100%)",
+          boxShadow: "0 16px 24px rgba(0,0,0,0.24)",
+        }}
+      />
+
+      {profile.branches.map((branch, i) => (
+        <div
+          key={`branch-${i}`}
+          className={`absolute ${p.trunk}`}
+          style={{
+            left: `calc(50% + ${scalePx(branch.x, cfg.scale)}px)`,
+            bottom: `${scalePx(branch.bottom, cfg.scale)}px`,
+            width: `${Math.max(3, scalePx(branch.width, cfg.scale))}px`,
+            height: `${scalePx(branch.height, cfg.scale)}px`,
+            transform: `rotate(${branch.rotate}deg)`,
+            transformOrigin: "bottom center",
+            clipPath: "polygon(18% 100%, 0 16%, 46% 0, 100% 14%, 82% 100%)",
+          }}
+        />
+      ))}
+
+      {backLayers.map((layer, index) => (
+        <LayeredBlob
+          key={`back-${index}`}
+          tone={layer.tone}
+          x={scalePx(layer.x, cfg.scale)}
+          bottom={scalePx(layer.bottom, cfg.scale)}
+          width={scalePx(layer.width, cfg.scale)}
+          height={scalePx(layer.height, cfg.scale)}
+          rotate={layer.rotate}
+          shape={layer.shape}
+          opacity={layer.opacity}
+          motionLevel={parallaxStrength}
+          index={index}
+        />
+      ))}
+
+      <div
+        className="absolute left-1/2"
+        style={{
+          bottom: `${scalePx(profile.glow.bottom - 8, cfg.scale)}px`,
+          width: `${scalePx(profile.glow.width * 2.1, cfg.scale)}px`,
+          height: `${scalePx(profile.glow.height * 1.9, cfg.scale)}px`,
+          transform: "translateX(-50%)",
+          background: glowPalette.backdrop,
+          filter: "blur(26px)",
+          opacity: 0.95,
+        }}
+      />
+
+      <div
+        className="absolute left-1/2"
+        style={
+          {
+            bottom: `${scalePx(profile.glow.bottom - 2, cfg.scale)}px`,
+            width: `${scalePx(profile.glow.width * 1.85, cfg.scale)}px`,
+            height: `${scalePx(profile.glow.height * 1.65, cfg.scale)}px`,
+            transform: "translateX(-50%)",
+            background: glowPalette.outer,
+            filter: "blur(36px) saturate(145%)",
+            opacity: outerGlowOpacity,
+            animationName: glowStrength > 0.01 ? "heroGlowPulse" : undefined,
+            animationDuration:
+              glowStrength > 0.01
+                ? `${6.8 - Math.min(1.2, glowStrength * 3)}s`
+                : undefined,
+            animationTimingFunction: glowStrength > 0.01 ? "ease-in-out" : undefined,
+            animationIterationCount: glowStrength > 0.01 ? "infinite" : undefined,
+            animationDelay: glowStrength > 0.01 ? TREE_PHASE_DELAY[variant] : undefined,
+            ["--glow-opacity" as any]: outerGlowOpacity,
+            ["--glow-grow" as any]: 0.03 + glowStrength * 0.35,
+          } as CSSProperties
+        }
+      />
+
+      <div
+        className="absolute left-1/2"
+        style={{
+          bottom: `${scalePx(profile.glow.bottom + 6, cfg.scale)}px`,
+          width: `${scalePx(profile.glow.width * 1.15, cfg.scale)}px`,
+          height: `${scalePx(profile.glow.height * 1.0, cfg.scale)}px`,
+          transform: "translateX(-50%)",
+          background: glowPalette.inner,
+          filter: "blur(13px)",
+          opacity: 0.92,
+        }}
+      />
+
+      <InterLayerParticles
+        variant={variant}
+        scale={cfg.scale}
+        count={cfg.particleCount}
+        particleStrength={particleStrength}
+      />
+
+      <PaperSpeciesAccents variant={variant} scale={cfg.scale} />
+
+      {frontLayers.map((layer, index) => (
+        <LayeredBlob
+          key={`front-${index}`}
+          tone={layer.tone}
+          x={scalePx(layer.x, cfg.scale)}
+          bottom={scalePx(layer.bottom, cfg.scale)}
+          width={scalePx(layer.width, cfg.scale)}
+          height={scalePx(layer.height, cfg.scale)}
+          rotate={layer.rotate}
+          shape={layer.shape}
+          opacity={layer.opacity}
+          motionLevel={parallaxStrength}
+          index={index + 2}
+        />
+      ))}
     </div>
   );
 }
 
-function Bud({ variant }: { variant: TreeKey }) {
-  const p = PALETTES[variant];
+function LayeredBlob({
+  tone,
+  x,
+  bottom,
+  width,
+  height,
+  rotate = 0,
+  shape,
+  opacity = 1,
+  motionLevel = 0,
+  index = 0,
+}: {
+  tone: string;
+  x: number;
+  bottom: number;
+  width: number;
+  height: number;
+  rotate?: number;
+  shape: string;
+  opacity?: number;
+  motionLevel?: number;
+  index?: number;
+}) {
+  const animated = motionLevel > 0.04;
+
+  return (
+    <div
+      className={`absolute ${tone}`}
+      style={
+        animated
+          ? ({
+              left: `calc(50% + ${x}px)`,
+              bottom: `${bottom}px`,
+              width: `${width}px`,
+              height: `${height}px`,
+              opacity,
+              clipPath: shape,
+              boxShadow: "0 16px 24px rgba(8, 12, 10, 0.18)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              transformOrigin: "center bottom",
+              ...animationStyle(
+                "paperLayerSway",
+                `${7.8 - motionLevel * 1.2 + index * 0.18}s`,
+                "ease-in-out",
+                `${-0.65 * index}s`
+              ),
+              ["--layer-rotate" as any]: `${rotate}deg`,
+              ["--layer-sway" as any]: `${0.18 + motionLevel * 0.5 + index * 0.04}deg`,
+              ["--layer-lift" as any]: `${0.3 + motionLevel * 0.9}px`,
+            } as CSSProperties)
+          : {
+              left: `calc(50% + ${x}px)`,
+              bottom: `${bottom}px`,
+              width: `${width}px`,
+              height: `${height}px`,
+              opacity,
+              transform: `translateX(-50%) rotate(${rotate}deg)`,
+              clipPath: shape,
+              boxShadow: "0 16px 24px rgba(8, 12, 10, 0.18)",
+              border: "1px solid rgba(255,255,255,0.12)",
+            }
+      }
+    >
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(to bottom, rgba(255,255,255,0.18), rgba(255,255,255,0.04) 24%, rgba(0,0,0,0.14) 100%)",
+          mixBlendMode: "screen",
+          opacity: 0.65,
+        }}
+      />
+      <div
+        className="absolute inset-0"
+        style={{
+          boxShadow: "inset 0 -18px 24px rgba(0,0,0,0.12), inset 0 2px 6px rgba(255,255,255,0.08)",
+        }}
+      />
+      <div
+        className="absolute inset-[2px]"
+        style={{
+          borderTop: "1px solid rgba(255,255,255,0.18)",
+          opacity: 0.7,
+        }}
+      />
+    </div>
+  );
+}
+
+function InterLayerParticles({
+  variant,
+  scale,
+  count,
+  particleStrength = 0,
+}: {
+  variant: TreeKey;
+  scale: number;
+  count: number;
+  particleStrength?: number;
+}) {
+  if (particleStrength <= 0.08) return null;
+
+  const glow =
+    variant === "firefly"
+      ? "rgba(255,245,170,0.95)"
+      : variant === "moon" || variant === "silver"
+      ? "rgba(255,255,255,0.88)"
+      : variant === "blossom"
+      ? "rgba(255,236,244,0.84)"
+      : "rgba(255,236,190,0.58)";
+
+  const visibleCount = Math.max(
+    1,
+    Math.min(count, Math.round(count * Math.min(1, particleStrength / 3.5)) + 2)
+  );
+
   return (
     <>
-      <div className={`absolute bottom-[4.6rem] left-1/2 h-7 w-1 -translate-x-1/2 rounded-full ${p.trunk}`} />
-      <div className={`absolute bottom-[6rem] left-[46%] h-4 w-6 rounded-full ${p.leaf1} rotate-[-22deg] shadow-sm`} />
-      <div className={`absolute bottom-[6rem] left-[51%] h-4 w-6 rounded-full ${p.leaf2} rotate-[24deg] shadow-sm`} />
+      {PAPER_PARTICLES.slice(0, visibleCount).map((particle, index) => {
+        const shard = variant === "blossom" ? false : index % 3 === 0;
+
+        return (
+          <div
+            key={`particle-${index}`}
+            className="absolute"
+            style={
+              {
+                left: particle.left,
+                bottom: particle.bottom,
+                width: `${scalePx(particle.size, scale)}px`,
+                height: `${scalePx(particle.size, scale)}px`,
+                background: glow,
+                boxShadow: `0 0 ${scalePx(16, scale)}px ${glow}`,
+                borderRadius: shard ? "2px" : "999px",
+                filter: "blur(0.35px)",
+                ...animationStyle(
+                  "heroParticleFloat",
+                  `${
+                    5.8 - Math.min(2.2, particleStrength * 0.24) + (index % 4) * 0.2
+                  }s`,
+                  "ease-in-out",
+                  particle.delay
+                ),
+                ["--particle-opacity" as any]: particle.opacity,
+                ["--particle-rise" as any]: `${0.9 + particleStrength * 0.7}px`,
+                ["--particle-drift" as any]: `${
+                  (index % 2 === 0 ? 1 : -1) * (0.6 + particleStrength * 0.22)
+                }px`,
+              } as CSSProperties
+            }
+          />
+        );
+      })}
     </>
   );
 }
 
-function Sprout({ variant }: { variant: TreeKey }) {
+function PaperSpeciesAccents({
+  variant,
+  scale,
+}: {
+  variant: TreeKey;
+  scale: number;
+}) {
   const p = PALETTES[variant];
-  return (
-    <>
-      <div className={`absolute bottom-[4.5rem] left-1/2 h-12 w-1.5 -translate-x-1/2 rounded-full ${p.trunk}`} />
-      <div className={`absolute bottom-[6.2rem] left-[43%] h-5 w-8 rounded-full ${p.leaf1} rotate-[-28deg] shadow-md`} />
-      <div className={`absolute bottom-[7rem] left-[51%] h-5 w-8 rounded-full ${p.leaf2} rotate-[30deg] shadow-md`} />
-      <div className={`absolute bottom-[7.9rem] left-[47.5%] h-5 w-7 rounded-full ${p.leaf3} shadow-md`} />
-    </>
-  );
-}
 
-function Sapling({ variant }: { variant: TreeKey }) {
-  const p = PALETTES[variant];
-  const drape = variant === "willow";
-  return (
-    <>
-      <div className={`absolute bottom-[4.3rem] left-1/2 h-20 w-2 -translate-x-1/2 rounded-full ${p.trunk} shadow-sm`} />
-      <div className={`absolute bottom-[8.5rem] left-[39%] h-7 w-11 rounded-full ${p.leaf1} rotate-[-20deg] shadow-lg`} />
-      <div className={`absolute bottom-[10rem] left-[51%] h-7 w-11 rounded-full ${p.leaf2} rotate-[18deg] shadow-lg`} />
-      <div className={`absolute bottom-[11rem] left-[44%] h-8 w-12 rounded-full ${p.leaf3} shadow-lg`} />
-      <div className="absolute bottom-[8.7rem] left-[48.5%] h-8 w-[2px] bg-[#6f472b]/80 rotate-[35deg]" />
-      <div className="absolute bottom-[9rem] left-[48.2%] h-8 w-[2px] bg-[#6f472b]/80 -rotate-[30deg]" />
-      {drape && <div className={`absolute bottom-[8.7rem] left-[39%] h-10 w-2 rounded-full ${p.leaf2} opacity-80`} />}
-      {drape && <div className={`absolute bottom-[9rem] left-[58%] h-11 w-2 rounded-full ${p.leaf1} opacity-80`} />}
-    </>
-  );
-}
+  if (variant === "willow") {
+    return (
+      <>
+        {[
+          { left: "19%", bottom: "34%", h: 96 },
+          { left: "27%", bottom: "39%", h: 82 },
+          { left: "36%", bottom: "44%", h: 68 },
+          { left: "64%", bottom: "45%", h: 74 },
+          { left: "73%", bottom: "39%", h: 88 },
+          { left: "81%", bottom: "33%", h: 100 },
+        ].map((strand, i) => (
+          <div
+            key={`willow-${i}`}
+            className={`absolute ${i % 2 === 0 ? p.leaf2 : p.leaf1}`}
+            style={{
+              left: strand.left,
+              bottom: strand.bottom,
+              width: `${scalePx(10, scale)}px`,
+              height: `${scalePx(strand.h, scale)}px`,
+              clipPath: PAPER_DRAPE,
+              opacity: 0.9,
+              filter: "drop-shadow(0 8px 10px rgba(0,0,0,0.12))",
+            }}
+          />
+        ))}
+      </>
+    );
+  }
 
-function YoungTree({ variant }: { variant: TreeKey }) {
-  const p = PALETTES[variant];
-  const blossom = variant === "blossom";
-  const willow = variant === "willow";
-  const moon = variant === "moon";
-  return (
-    <>
-      <div className={`absolute bottom-[4rem] left-1/2 h-28 w-3 -translate-x-1/2 rounded-full ${p.trunk} shadow-md`} />
-      <div className="absolute bottom-[10rem] left-[47.7%] h-10 w-[3px] bg-[#765032] rotate-[30deg]" />
-      <div className="absolute bottom-[11rem] left-[48.2%] h-10 w-[3px] bg-[#765032] -rotate-[26deg]" />
-      <div className={`absolute bottom-[11.5rem] left-[31%] h-14 w-16 rounded-full ${p.leaf1} blur-[1px] shadow-2xl`} />
-      <div className={`absolute bottom-[13rem] left-[44%] h-16 w-16 rounded-full ${p.leaf2} blur-[1px] shadow-2xl`} />
-      <div className={`absolute bottom-[11rem] left-[53%] h-14 w-16 rounded-full ${p.leaf3} blur-[1px] shadow-2xl`} />
-      <div className={`absolute bottom-[9.8rem] left-[40%] h-12 w-20 rounded-full ${p.leaf4} blur-[1px] shadow-xl`} />
-      <div className={`absolute bottom-[10.8rem] left-[37%] h-12 w-12 rounded-full ${p.glow} blur-xl`} />
-      {blossom && (
-        <>
-          <div className="absolute bottom-[13.8rem] left-[39%] h-2 w-2 rounded-full bg-white/90" />
-          <div className="absolute bottom-[12.6rem] left-[59%] h-2 w-2 rounded-full bg-rose-50/95" />
-          <div className="absolute bottom-[11.8rem] left-[49%] h-2 w-2 rounded-full bg-pink-50/95" />
-        </>
-      )}
-      {willow && (
-        <>
-          <div className={`absolute bottom-[9.8rem] left-[34%] h-14 w-2 rounded-full ${p.leaf2} opacity-80`} />
-          <div className={`absolute bottom-[10.2rem] left-[62%] h-16 w-2 rounded-full ${p.leaf1} opacity-80`} />
-        </>
-      )}
-      {moon && <div className="absolute bottom-[14.2rem] left-[56%] h-4 w-4 rounded-full bg-white/35 blur-sm" />}
-    </>
-  );
-}
+  if (variant === "oak") {
+    return (
+      <>
+        <div
+          className={`absolute left-1/2 ${p.leaf1}`}
+          style={{
+            bottom: "39%",
+            width: `${scalePx(168, scale)}px`,
+            height: `${scalePx(38, scale)}px`,
+            transform: "translateX(-50%)",
+            clipPath: PAPER_SHELF,
+            opacity: 0.9,
+          }}
+        />
+        {[
+          { left: "36%", bottom: "35%" },
+          { left: "50%", bottom: "32%" },
+          { left: "64%", bottom: "36%" },
+        ].map((acorn, i) => (
+          <div
+            key={`oak-${i}`}
+            className="absolute rounded-b-full rounded-t-[45%] bg-[#8b5a34]"
+            style={{
+              left: acorn.left,
+              bottom: acorn.bottom,
+              width: `${scalePx(10, scale)}px`,
+              height: `${scalePx(13, scale)}px`,
+              boxShadow: "0 0 8px rgba(80,45,20,0.24)",
+            }}
+          />
+        ))}
+      </>
+    );
+  }
 
-function GrandTree({ variant }: { variant: TreeKey }) {
-  const p = PALETTES[variant];
-  const blossom = variant === "blossom";
-  const willow = variant === "willow";
-  const firefly = variant === "firefly";
-  const moon = variant === "moon";
-  const silver = variant === "silver";
-  const oak = variant === "oak";
+  if (variant === "blossom") {
+    return (
+      <>
+        <div
+          className="absolute left-1/2 rounded-full bg-pink-100/22"
+          style={{
+            bottom: "58%",
+            width: `${scalePx(126, scale)}px`,
+            height: `${scalePx(58, scale)}px`,
+            transform: "translateX(-50%)",
+            filter: "blur(12px)",
+          }}
+        />
+        {[
+          { left: "30%", bottom: "72%", size: 8, cls: "bg-white/90" },
+          { left: "39%", bottom: "81%", size: 7, cls: "bg-rose-50/95" },
+          { left: "48%", bottom: "77%", size: 8, cls: "bg-pink-50/95" },
+          { left: "58%", bottom: "69%", size: 7, cls: "bg-rose-50/95" },
+          { left: "65%", bottom: "74%", size: 8, cls: "bg-white/85" },
+          { left: "43%", bottom: "61%", size: 6, cls: "bg-pink-50/95" },
+        ].map((petal, i) => (
+          <div
+            key={`petal-${i}`}
+            className={`absolute rounded-full ${petal.cls}`}
+            style={{
+              left: petal.left,
+              bottom: petal.bottom,
+              width: `${scalePx(petal.size, scale)}px`,
+              height: `${scalePx(petal.size, scale)}px`,
+              boxShadow: "0 0 12px rgba(255,243,248,0.34)",
+            }}
+          />
+        ))}
+      </>
+    );
+  }
 
-  return (
-    <>
-      <div className={`absolute bottom-[4rem] left-1/2 h-36 w-4 -translate-x-1/2 rounded-full ${p.trunk} shadow-lg`} />
-      <div className="absolute bottom-[12rem] left-[48%] h-12 w-[3px] bg-[#725033] rotate-[38deg]" />
-      <div className="absolute bottom-[12.4rem] left-[48.1%] h-12 w-[3px] bg-[#725033] -rotate-[34deg]" />
-      <div className={`absolute bottom-[14.5rem] left-[20%] h-16 w-20 rounded-full ${p.leaf4} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[16rem] left-[31%] h-20 w-24 rounded-full ${p.leaf1} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[17rem] left-[45%] h-20 w-22 rounded-full ${p.leaf2} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[15.8rem] left-[57%] h-18 w-22 rounded-full ${p.leaf3} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[13.3rem] left-[35%] h-15 w-24 rounded-full ${p.glow} blur-2xl`} />
+  if (variant === "moon") {
+    return (
+      <>
+        <div
+          className="absolute left-[59%] rounded-full border border-white/60 bg-white/18"
+          style={{
+            bottom: "80%",
+            width: `${scalePx(24, scale)}px`,
+            height: `${scalePx(24, scale)}px`,
+            boxShadow: "0 0 24px rgba(255,255,255,0.4)",
+          }}
+        />
+        <div
+          className="absolute left-[63%] rounded-full bg-[#132132]"
+          style={{
+            bottom: "81.2%",
+            width: `${scalePx(17, scale)}px`,
+            height: `${scalePx(17, scale)}px`,
+          }}
+        />
+        {[
+          { left: "35%", bottom: "71%" },
+          { left: "70%", bottom: "66%" },
+        ].map((star, i) => (
+          <div
+            key={`moon-star-${i}`}
+            className="absolute bg-white/85"
+            style={{
+              left: star.left,
+              bottom: star.bottom,
+              width: `${scalePx(6, scale)}px`,
+              height: `${scalePx(6, scale)}px`,
+              transform: "rotate(45deg)",
+              boxShadow: "0 0 12px rgba(255,255,255,0.55)",
+            }}
+          />
+        ))}
+      </>
+    );
+  }
 
-      {willow && (
-        <>
-          <div className={`absolute bottom-[10.2rem] left-[27%] h-24 w-2 rounded-full ${p.leaf2} opacity-80`} />
-          <div className={`absolute bottom-[11rem] left-[35%] h-20 w-2 rounded-full ${p.leaf1} opacity-80`} />
-          <div className={`absolute bottom-[11rem] left-[65%] h-24 w-2 rounded-full ${p.leaf2} opacity-80`} />
-          <div className={`absolute bottom-[10rem] left-[73%] h-18 w-2 rounded-full ${p.leaf1} opacity-80`} />
-        </>
-      )}
+  if (variant === "golden") {
+    return (
+      <>
+        {[
+          { left: "27%", bottom: "49%", h: 22, cls: p.leaf2 },
+          { left: "47%", bottom: "76%", h: 18, cls: p.leaf3 },
+          { left: "66%", bottom: "54%", h: 24, cls: p.leaf1 },
+        ].map((leaf, i) => (
+          <div
+            key={`golden-${i}`}
+            className={`absolute ${leaf.cls}`}
+            style={{
+              left: leaf.left,
+              bottom: leaf.bottom,
+              width: `${scalePx(10, scale)}px`,
+              height: `${scalePx(leaf.h, scale)}px`,
+              clipPath: PAPER_FLAME,
+              opacity: 0.92,
+            }}
+          />
+        ))}
+      </>
+    );
+  }
 
-      {blossom && (
-        <>
-          <div className="absolute bottom-[17rem] left-[30%] h-2.5 w-2.5 rounded-full bg-white/90" />
-          <div className="absolute bottom-[18rem] left-[46%] h-2.5 w-2.5 rounded-full bg-rose-50/95" />
-          <div className="absolute bottom-[16.2rem] left-[61%] h-2.5 w-2.5 rounded-full bg-pink-50/95" />
-        </>
-      )}
+  if (variant === "firefly") {
+    return (
+      <>
+        {[
+          { left: "30%", bottom: "58%", size: 8, delay: "0s" },
+          { left: "40%", bottom: "72%", size: 6, delay: "-0.7s" },
+          { left: "52%", bottom: "52%", size: 7, delay: "-1.2s" },
+          { left: "61%", bottom: "65%", size: 8, delay: "-1.8s" },
+          { left: "71%", bottom: "56%", size: 6, delay: "-0.4s" },
+        ].map((dot, i) => (
+          <div
+            key={`firefly-${i}`}
+            className="absolute rounded-full bg-yellow-100/95 animate-pulse"
+            style={{
+              left: dot.left,
+              bottom: dot.bottom,
+              width: `${scalePx(dot.size, scale)}px`,
+              height: `${scalePx(dot.size, scale)}px`,
+              animationDelay: dot.delay,
+              boxShadow: "0 0 20px rgba(255,245,170,0.92)",
+            }}
+          />
+        ))}
+      </>
+    );
+  }
 
-      {firefly && (
-        <>
-          <div className="absolute bottom-[17rem] left-[35%] h-2.5 w-2.5 rounded-full bg-yellow-100 shadow-[0_0_18px_rgba(255,245,170,0.9)]" />
-          <div className="absolute bottom-[15rem] left-[58%] h-2.5 w-2.5 rounded-full bg-yellow-100 shadow-[0_0_18px_rgba(255,245,170,0.9)]" />
-        </>
-      )}
+  if (variant === "silver") {
+    return (
+      <>
+        <div
+          className="absolute left-1/2 bg-white/18"
+          style={{
+            bottom: "73%",
+            width: `${scalePx(116, scale)}px`,
+            height: `${scalePx(22, scale)}px`,
+            transform: "translateX(-50%)",
+            clipPath: PAPER_CRYSTAL,
+            filter: "blur(8px)",
+          }}
+        />
+        {[
+          { left: "36%", bottom: "68%" },
+          { left: "60%", bottom: "77%" },
+          { left: "68%", bottom: "61%" },
+        ].map((flake, i) => (
+          <div
+            key={`silver-${i}`}
+            className="absolute bg-white/90"
+            style={{
+              left: flake.left,
+              bottom: flake.bottom,
+              width: `${scalePx(6, scale)}px`,
+              height: `${scalePx(10, scale)}px`,
+              clipPath: PAPER_CRYSTAL,
+              boxShadow: "0 0 12px rgba(255,255,255,0.42)",
+            }}
+          />
+        ))}
+      </>
+    );
+  }
 
-      {moon && (
-        <div className="absolute bottom-[18.9rem] left-[57%] h-8 w-8 rounded-full border border-white/60 bg-white/20 shadow-[0_0_24px_rgba(255,255,255,0.45)]" />
-      )}
-
-      {silver && <div className="absolute bottom-[19rem] left-[41%] h-8 w-10 rounded-full bg-white/30 blur-md" />}
-      {oak && <div className={`absolute bottom-[13rem] left-[49%] h-16 w-24 rounded-full ${p.leaf2} shadow-xl blur-[1px]`} />}
-    </>
-  );
-}
-
-function AncientTree({ variant }: { variant: TreeKey }) {
-  const p = PALETTES[variant];
-  return (
-    <>
-      <GrandTree variant={variant} />
-      <div className={`absolute bottom-[18rem] left-[14%] h-16 w-20 rounded-full ${p.leaf1} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[19.5rem] left-[28%] h-18 w-24 rounded-full ${p.leaf2} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[20.4rem] left-[44%] h-18 w-24 rounded-full ${p.leaf3} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[19.2rem] left-[60%] h-16 w-20 rounded-full ${p.leaf1} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[17rem] left-[36%] h-20 w-24 rounded-full ${p.glow} blur-3xl`} />
-    </>
-  );
-}
-
-function MythicTree({ variant }: { variant: TreeKey }) {
-  const p = PALETTES[variant];
-  return (
-    <>
-      <AncientTree variant={variant} />
-      <div className={`absolute bottom-[21.5rem] left-[8%] h-18 w-24 rounded-full ${p.leaf4} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[23rem] left-[22%] h-20 w-26 rounded-full ${p.leaf1} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[24rem] left-[40%] h-20 w-28 rounded-full ${p.leaf2} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[22.8rem] left-[60%] h-18 w-24 rounded-full ${p.leaf3} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[20.5rem] left-[30%] h-22 w-28 rounded-full ${p.glow} blur-3xl`} />
-    </>
-  );
-}
-
-function WorldTree({ variant }: { variant: TreeKey }) {
-  const p = PALETTES[variant];
-  return (
-    <>
-      <MythicTree variant={variant} />
-      <div className={`absolute bottom-[25.5rem] left-[2%] h-20 w-24 rounded-full ${p.leaf4} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[27rem] left-[16%] h-22 w-28 rounded-full ${p.leaf1} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[28.2rem] left-[36%] h-22 w-30 rounded-full ${p.leaf2} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[27rem] left-[58%] h-20 w-26 rounded-full ${p.leaf3} shadow-2xl blur-[1px]`} />
-      <div className={`absolute bottom-[24rem] left-[24%] h-24 w-32 rounded-full ${p.glow} blur-3xl`} />
-    </>
-  );
+  return null;
 }
