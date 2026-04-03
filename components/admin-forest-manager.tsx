@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ForestScene } from "@/components/forest-scene";
 import { AdminControls } from "@/components/admin-controls";
 import type { TreeState } from "@/lib/types";
-
-const STORAGE_KEY = "local-forest-state";
+import { updateTreeStage, updateTreeStarStage } from "@/lib/actions";
 
 export function AdminForestManager({
   initialTrees,
@@ -20,87 +20,84 @@ export function AdminForestManager({
     }))
   );
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (!saved) return;
+  const router = useRouter();
 
-    try {
-      const parsed = JSON.parse(saved) as TreeState[];
-      setTrees(
-        parsed.map((tree) => ({
-          ...tree,
-          stage: Math.max(1, Math.min(8, tree.stage)),
-          star_stage: Math.max(0, Math.min(7, tree.star_stage ?? 0)),
-        }))
+  async function handleGrow(treeKey: string) {
+    const current = trees.find((tree) => tree.tree_key === treeKey);
+    if (!current) return;
+
+    if (current.stage < 8) {
+      const nextStage = Math.min(current.stage + 1, 8);
+
+      setTrees((prev) =>
+        prev.map((tree) =>
+          tree.tree_key === treeKey
+            ? { ...tree, stage: nextStage }
+            : tree
+        )
       );
-    } catch {
-      // ignore bad local data
+
+      await updateTreeStage(treeKey, nextStage);
+      router.refresh();
+      return;
     }
-  }, []);
 
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(trees));
-  }, [trees]);
+    if (current.star_stage < 7) {
+      const nextStarStage = Math.min(current.star_stage + 1, 7);
 
-  function handleGrow(treeKey: string) {
-    setTrees((prev) =>
-      prev.map((tree) => {
-        if (tree.tree_key !== treeKey) return tree;
+      setTrees((prev) =>
+        prev.map((tree) =>
+          tree.tree_key === treeKey
+            ? { ...tree, star_stage: nextStarStage }
+            : tree
+        )
+      );
 
-        if (tree.stage < 8) {
-          return { ...tree, stage: Math.min(tree.stage + 1, 8) };
-        }
-
-        if (tree.star_stage < 7) {
-          return { ...tree, star_stage: Math.min(tree.star_stage + 1, 7) };
-        }
-
-        return tree;
-      })
-    );
+      await updateTreeStarStage(treeKey, nextStarStage);
+      router.refresh();
+    }
   }
 
-  function handleWilt(treeKey: string) {
-    setTrees((prev) =>
-      prev.map((tree) => {
-        if (tree.tree_key !== treeKey) return tree;
+  async function handleWilt(treeKey: string) {
+    const current = trees.find((tree) => tree.tree_key === treeKey);
+    if (!current) return;
 
-        if (tree.star_stage > 0) {
-          return { ...tree, star_stage: Math.max(tree.star_stage - 1, 0) };
-        }
+    if (current.star_stage > 0) {
+      const nextStarStage = Math.max(current.star_stage - 1, 0);
 
-        if (tree.stage > 1) {
-          return { ...tree, stage: Math.max(tree.stage - 1, 1) };
-        }
+      setTrees((prev) =>
+        prev.map((tree) =>
+          tree.tree_key === treeKey
+            ? { ...tree, star_stage: nextStarStage }
+            : tree
+        )
+      );
 
-        return tree;
-      })
-    );
-  }
+      await updateTreeStarStage(treeKey, nextStarStage);
+      router.refresh();
+      return;
+    }
 
-  function handleReset() {
-    const resetTrees = initialTrees.map((tree) => ({
-      ...tree,
-      stage: Math.max(1, Math.min(8, tree.stage)),
-      star_stage: Math.max(0, Math.min(7, tree.star_stage ?? 0)),
-    }));
+    if (current.stage > 1) {
+      const nextStage = Math.max(current.stage - 1, 1);
 
-    setTrees(resetTrees);
-    window.localStorage.removeItem(STORAGE_KEY);
+      setTrees((prev) =>
+        prev.map((tree) =>
+          tree.tree_key === treeKey
+            ? { ...tree, stage: nextStage }
+            : tree
+        )
+      );
+
+      await updateTreeStage(treeKey, nextStage);
+      router.refresh();
+    }
   }
 
   return (
     <div className="relative min-h-screen overflow-hidden">
       <ForestScene trees={trees} admin />
       <div className="absolute right-0 top-0 z-30 h-full w-[340px] p-6">
-        <div className="mb-4 flex justify-end">
-          <button
-            onClick={handleReset}
-            className="rounded-full border border-slate-200/70 bg-white/85 px-3 py-2 text-xs font-medium text-slate-700 shadow-md transition hover:bg-white"
-          >
-            Reset Local State
-          </button>
-        </div>
         <AdminControls trees={trees} onGrow={handleGrow} onWilt={handleWilt} />
       </div>
     </div>

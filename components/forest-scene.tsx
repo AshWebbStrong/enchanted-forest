@@ -1331,67 +1331,67 @@ function getSpeciesProfile(variant: TreeKey, p: Palette): SpeciesProfile {
       };
 
     case "moon":
-      return {
-        glow: { width: 116, height: 92, bottom: 188, opacity: 0.92 },
-        shadow: { width: 150, height: 132, bottom: 162, shape: PAPER_SPIRE },
-        branches: [
-          { x: 0, bottom: 68, width: 9, height: 76, rotate: 0 },
-          { x: -8, bottom: 118, width: 5, height: 34, rotate: -22 },
-          { x: 8, bottom: 118, width: 5, height: 34, rotate: 22 },
-        ],
-        layers: [
-          {
-            x: 0,
-            bottom: 144,
-            width: 134,
-            height: 70,
-            rotate: 0,
-            tone: p.leaf4,
-            shape: PAPER_SPIRE,
-            opacity: 0.9,
-          },
-          {
-            x: -30,
-            bottom: 182,
-            width: 106,
-            height: 106,
-            rotate: -6,
-            tone: p.leaf1,
-            shape: PAPER_SPIRE,
-            opacity: 0.95,
-          },
-          {
-            x: 30,
-            bottom: 182,
-            width: 106,
-            height: 106,
-            rotate: 6,
-            tone: p.leaf2,
-            shape: PAPER_SPIRE,
-            opacity: 0.95,
-          },
-          {
-            x: 0,
-            bottom: 220,
-            width: 138,
-            height: 134,
-            rotate: 0,
-            tone: p.leaf3,
-            shape: PAPER_SPIRE,
-            opacity: 0.95,
-          },
-          {
-            x: 0,
-            bottom: 270,
-            width: 84,
-            height: 74,
-            rotate: 0,
-            tone: p.leaf2,
-            shape: PAPER_CRYSTAL,
-            opacity: 0.88,
-          },
-        ],
-      };
+  return {
+    glow: { width: 116, height: 92, bottom: 188, opacity: 0.92 },
+    shadow: { width: 150, height: 132, bottom: 162, shape: PAPER_SPIRE },
+    branches: [
+      { x: 0, bottom: 68, width: 9, height: 76, rotate: 0 },
+      { x: -8, bottom: 118, width: 5, height: 34, rotate: -22 },
+      { x: 8, bottom: 118, width: 5, height: 34, rotate: 22 },
+    ],
+    layers: [
+      {
+        x: 0,
+        bottom: 144,
+        width: 134,
+        height: 70,
+        rotate: 0,
+        tone: p.leaf4,
+        shape: PAPER_SPIRE,
+        opacity: 0.9,
+      },
+      {
+        x: 0,
+        bottom: 220,
+        width: 138,
+        height: 134,
+        rotate: 0,
+        tone: p.leaf3,
+        shape: PAPER_SPIRE,
+        opacity: 0.95,
+      },
+      {
+        x: -30,
+        bottom: 182,
+        width: 106,
+        height: 106,
+        rotate: -6,
+        tone: p.leaf1,
+        shape: PAPER_SPIRE,
+        opacity: 0.95,
+      },
+      {
+        x: 30,
+        bottom: 182,
+        width: 106,
+        height: 106,
+        rotate: 6,
+        tone: p.leaf2,
+        shape: PAPER_SPIRE,
+        opacity: 0.95,
+      },
+      {
+        x: 0,
+        bottom: 270,
+        width: 84,
+        height: 74,
+        rotate: 0,
+        tone: p.leaf2,
+        shape: PAPER_CRYSTAL,
+        opacity: 0.88,
+      },
+    ],
+  };
 
     case "firefly":
       return {
@@ -1595,7 +1595,7 @@ type HeroEffectProfile = {
 const HERO_EFFECTS: Record<TreeKey, HeroEffectProfile> = {
   golden: {
     sway: 2,
-    glow: 0.9,
+    glow: 0.5,
     particles: 0.4,
     parallax: 1,
   },
@@ -1619,9 +1619,9 @@ const HERO_EFFECTS: Record<TreeKey, HeroEffectProfile> = {
   },
   moon: {
     sway: 0,
-    glow: 0,
-    particles: 0.2,
-    parallax: 10,
+    glow: 25,
+    particles: 0,
+    parallax: 1,
   },
   silver: {
     sway: 6,
@@ -1631,7 +1631,7 @@ const HERO_EFFECTS: Record<TreeKey, HeroEffectProfile> = {
   },
   willow: {
     sway: 2,
-    glow: 2,
+    glow: 0.5,
     particles: 0.4,
     parallax: 1,
   },
