@@ -10,6 +10,7 @@ export type TreeKey =
 export type TreeState = {
   tree_key: TreeKey;
   stage: number;
+  star_stage: number;
 };
 
 export const TREE_NAMES: Record<TreeKey, string> = {

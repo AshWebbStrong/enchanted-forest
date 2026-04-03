@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties } from "react";
-import { TREE_NAMES, type TreeKey, type TreeState } from "@/lib/types";
+import { type TreeKey, type TreeState } from "@/lib/types";
 
 type Palette = {
   leaf1: string;
@@ -186,14 +186,6 @@ function animationStyle(
   };
 }
 
-function getTreeLabel(tree: TreeState) {
-  const maybeLabel =
-    (tree as TreeState & { name?: string; label?: string }).name ??
-    (tree as TreeState & { name?: string; label?: string }).label;
-
-  return typeof maybeLabel === "string" ? maybeLabel : "";
-}
-
 export function ForestScene({
   trees,
   admin = false,
@@ -213,12 +205,15 @@ export function ForestScene({
         <SkyBirdsAndBats cyclePhase={cyclePhase} />
         <div className="absolute -top-16 left-[-10%] h-64 w-64 rounded-full bg-white/35 blur-3xl" />
         <div className="absolute top-24 right-[10%] h-40 w-40 rounded-full bg-yellow-100/70 blur-2xl" />
-        <div className="absolute bottom-0 left-0 right-0 h-[34%] bg-[linear-gradient(to_top,_rgba(58,89,67,0.95),_rgba(103,145,96,0.8)_30%,_rgba(165,196,134,0.18)_70%,_transparent)]" />
-        <ForestFloor />
-        <ForegroundForest />
         <div className="absolute left-[7%] top-[20%] h-24 w-52 rounded-full bg-emerald-950/10 blur-3xl" />
         <div className="absolute left-[38%] top-[14%] h-24 w-64 rounded-full bg-emerald-950/10 blur-3xl" />
         <div className="absolute right-[6%] top-[22%] h-28 w-56 rounded-full bg-emerald-950/10 blur-3xl" />
+
+        <SkyStars trees={trees} cyclePhase={cyclePhase} />
+
+        <div className="absolute bottom-0 left-0 right-0 h-[34%] bg-[linear-gradient(to_top,_rgba(58,89,67,0.95),_rgba(103,145,96,0.8)_30%,_rgba(165,196,134,0.18)_70%,_transparent)]" />
+        <ForestFloor />
+        <ForegroundForest />
       </div>
 
       <div className={`relative z-10 min-h-screen ${admin ? "pr-[340px]" : ""}`}>
@@ -233,12 +228,8 @@ export function ForestScene({
 
           const depthBand = depth < -0.35 ? 0 : depth < 0.35 ? 1 : 2;
 
-          // Small trees get a little priority so they don't vanish behind larger ones
           const stageFrontBonus =
-            tree.stage <= 2 ? 40 :
-            tree.stage === 3 ? 28 :
-            tree.stage === 4 ? 12 :
-            0;
+            tree.stage <= 2 ? 40 : tree.stage === 3 ? 28 : tree.stage === 4 ? 12 : 0;
 
           const zIndex = depthBand * 100 + stageFrontBonus + index;
 
@@ -264,18 +255,40 @@ export function ForestScene({
                   transition: "transform 180ms linear",
                 }}
               >
-               
-
-                <ForestSpot
-                  stage={tree.stage}
-                  variant={tree.tree_key}
-                  label={label}
-                />
+                <ForestSpot stage={tree.stage} variant={tree.tree_key} label={label} />
               </div>
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function SkyStars({
+  trees,
+  cyclePhase,
+}: {
+  trees: TreeState[];
+  cyclePhase: number;
+}) {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-visible" aria-hidden="true">
+      {trees.map((tree) => {
+        const position = SKY_STAR_LAYOUT[tree.tree_key];
+        if (!position) return null;
+
+        return (
+          <TreeStar
+            key={`sky-star-${tree.tree_key}`}
+            stage={clampStarStage(tree.star_stage ?? 0)}
+            variant={tree.tree_key}
+            cyclePhase={cyclePhase}
+            left={position.left}
+            bottom={position.bottom}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -413,7 +426,6 @@ function SkySunMoon({
         @keyframes batIntoTreesLeft{0%{transform:translateX(-10vw) translateY(1vh) scale(1);opacity:0}20%{transform:translateX(10vw) translateY(-1vh) scale(1.05);opacity:1}45%{transform:translateX(28vw) translateY(2vh) scale(1.08);opacity:1}70%{transform:translateX(44vw) translateY(5vh) scale(0.98);opacity:.8}100%{transform:translateX(52vw) translateY(8vh) scale(.9);opacity:0}}
         @keyframes batIntoTreesRight{0%{transform:translateX(10vw) translateY(1vh) scale(1);opacity:0}20%{transform:translateX(-10vw) translateY(-1vh) scale(1.05);opacity:1}45%{transform:translateX(-28vw) translateY(2vh) scale(1.08);opacity:1}70%{transform:translateX(-44vw) translateY(5vh) scale(0.98);opacity:.8}100%{transform:translateX(-52vw) translateY(8vh) scale(.9);opacity:0}}
         @keyframes cloudDrift{0%{transform:translateX(-18vw)}100%{transform:translateX(112vw)}}
-        @keyframes starTwinkle{0%,100%{opacity:.15;transform:scale(1)}50%{opacity:.8;transform:scale(1.15)}}
       `}</style>
 
       <div
@@ -507,25 +519,6 @@ function SkyBirdsAndBats({ cyclePhase }: { cyclePhase: number }) {
     255 - (1 - dayBlend) * 8
   )}, ${Math.round(252 - (1 - dayBlend) * 4)}, 0.38)`;
 
-  const stars = [
-    { left: "8%", top: "10%", size: "0.18rem", delay: "0s" },
-    { left: "12%", top: "11%", size: "0.22rem", delay: "-0.4s" },
-    { left: "18%", top: "22%", size: "0.14rem", delay: "-2.2s" },
-    { left: "22%", top: "18%", size: "0.18rem", delay: "-1.2s" },
-    { left: "27%", top: "14%", size: "0.16rem", delay: "-1.8s" },
-    { left: "31%", top: "9%", size: "0.24rem", delay: "-2.4s" },
-    { left: "37%", top: "24%", size: "0.14rem", delay: "-0.9s" },
-    { left: "44%", top: "16%", size: "0.16rem", delay: "-0.7s" },
-    { left: "49%", top: "8%", size: "0.2rem", delay: "-2.7s" },
-    { left: "56%", top: "8%", size: "0.22rem", delay: "-2.1s" },
-    { left: "63%", top: "28%", size: "0.2rem", delay: "-1.1s" },
-    { left: "68%", top: "19%", size: "0.18rem", delay: "-1.7s" },
-    { left: "72%", top: "11%", size: "0.14rem", delay: "-0.5s" },
-    { left: "79%", top: "12%", size: "0.24rem", delay: "-2.8s" },
-    { left: "86%", top: "23%", size: "0.16rem", delay: "-0.3s" },
-    { left: "90%", top: "14%", size: "0.14rem", delay: "-1.4s" },
-  ];
-
   return (
     <>
       {clouds.map((cloud, i) => (
@@ -546,27 +539,6 @@ function SkyBirdsAndBats({ cyclePhase }: { cyclePhase: number }) {
             edge={cloudEdge}
           />
         </div>
-      ))}
-
-      {stars.map((star, i) => (
-        <div
-          key={`star-${i}`}
-          className="absolute rounded-full bg-white"
-          style={{
-            left: star.left,
-            top: star.top,
-            width: star.size,
-            height: star.size,
-            opacity: 0.75 * nightStrength,
-            boxShadow: "0 0 8px rgba(255,255,255,0.45)",
-            ...animationStyle(
-              "starTwinkle",
-              `${2.8 + (i % 3) * 0.9}s`,
-              "ease-in-out",
-              star.delay
-            ),
-          }}
-        />
       ))}
 
       {DAY_BIRDS.map((bird, i) => (
@@ -1075,9 +1047,14 @@ function RegularForestTree({
 }
 
 type GrowthStage = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+type StarStage = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 const clampStage = (stage: number): GrowthStage => {
   return Math.max(1, Math.min(8, stage)) as GrowthStage;
+};
+
+const clampStarStage = (stage: number): StarStage => {
+  return Math.max(0, Math.min(7, stage)) as StarStage;
 };
 
 const PAPER_STAGE: Record<
@@ -1617,46 +1594,46 @@ type HeroEffectProfile = {
 
 const HERO_EFFECTS: Record<TreeKey, HeroEffectProfile> = {
   golden: {
-    sway: 0,
+    sway: 2,
     glow: 0.9,
-    particles: 0.15,
-    parallax: 10,
+    particles: 0.4,
+    parallax: 1,
   },
   oak: {
-    sway: 0,
+    sway: 2,
     glow: 0.12,
     particles: 0,
     parallax: 0.08,
   },
   blossom: {
-    sway: 5,
+    sway: 8,
     glow: 0.4,
     particles: 1,
     parallax: 3,
   },
   firefly: {
-    sway: 0.08,
+    sway: 2,
     glow: 0,
     particles: 1,
     parallax: 0.14,
   },
   moon: {
-    sway: 0.04,
+    sway: 0,
     glow: 0,
     particles: 0.2,
     parallax: 10,
   },
   silver: {
-    sway: 0.05,
+    sway: 6,
     glow: 0.2,
     particles: 0.18,
     parallax: 0.1,
   },
   willow: {
-    sway: 1,
-    glow: 0,
-    particles: 0.08,
-    parallax: 0,
+    sway: 2,
+    glow: 2,
+    particles: 0.4,
+    parallax: 1,
   },
 };
 
@@ -1689,6 +1666,197 @@ const TREE_PHASE_DELAY: Record<TreeKey, string> = {
   oak: "-1.8s",
   firefly: "-2.8s",
   silver: "-1.1s",
+};
+
+type StarRayMode =
+  | "regal"
+  | "soft"
+  | "petal"
+  | "crystal"
+  | "sturdy"
+  | "ember"
+  | "frost";
+
+type StarSatelliteMode =
+  | "crown"
+  | "droplet"
+  | "petals"
+  | "orbit"
+  | "acorns"
+  | "fireflies"
+  | "shards";
+
+type StarProfile = {
+  initials: string;
+  rotate: number;
+  twinkleDuration: number;
+  delay: string;
+  coreColor: string;
+  glowColor: string;
+  rayColor: string;
+  rayMode: StarRayMode;
+  satelliteMode: StarSatelliteMode;
+  satellites: { left: string; bottom: string; size: number }[];
+};
+
+type SkyStarPosition = {
+  left: string;
+  bottom: string;
+};
+
+const STAR_STAGE_STYLE: Record<
+  StarStage,
+  {
+    size: number;
+    halo: number;
+    ray: number;
+    glowOpacity: number;
+    satellites: number;
+  }
+> = {
+  0: { size: 0, halo: 0, ray: 0, glowOpacity: 0, satellites: 0 },
+  1: { size: 20, halo: 18, ray: 24, glowOpacity: 0.34, satellites: 0 },
+  2: { size: 30, halo: 22, ray: 30, glowOpacity: 0.44, satellites: 0 },
+  3: { size: 40, halo: 28, ray: 36, glowOpacity: 0.56, satellites: 1 },
+  4: { size: 50, halo: 34, ray: 44, glowOpacity: 0.68, satellites: 2 },
+  5: { size: 60, halo: 42, ray: 54, glowOpacity: 0.78, satellites: 3 },
+  6: { size: 70, halo: 50, ray: 64, glowOpacity: 0.88, satellites: 4 },
+  7: { size: 80, halo: 60, ray: 76, glowOpacity: 0.98, satellites: 5 },
+};
+
+const SKY_STAR_LAYOUT: Record<TreeKey, SkyStarPosition> = {
+  golden: { left: "56%", bottom: "80%" },
+  willow: { left: "72%", bottom: "90%" },
+  blossom: { left: "80%", bottom: "76%" },
+  moon: { left: "20%", bottom: "94%" },
+  oak: { left: "32%", bottom: "80%" },
+  firefly: { left: "15%", bottom: "74%" },
+  silver: { left: "42%", bottom: "88%" },
+};
+
+const STAR_PROFILES: Record<TreeKey, StarProfile> = {
+  golden: {
+    initials: "EB",
+    rotate: 8,
+    twinkleDuration: 4.6,
+    delay: "-0.3s",
+    coreColor: "rgba(255, 232, 162, 1)",
+    glowColor: "rgba(255, 191, 92, 0.9)",
+    rayColor: "rgba(255, 225, 146, 0.82)",
+    rayMode: "regal",
+    satelliteMode: "crown",
+    satellites: [
+      { left: "18%", bottom: "74%", size: 9 },
+      { left: "34%", bottom: "84%", size: 3 },
+      { left: "50%", bottom: "90%", size: 7 },
+      { left: "66%", bottom: "84%", size: 1 },
+      { left: "82%", bottom: "74%", size: 12 },
+    ],
+  },
+  willow: {
+    initials: "DM",
+    rotate: -10,
+    twinkleDuration: 5.2,
+    delay: "-1.1s",
+    coreColor: "rgb(14, 126, 68)",
+    glowColor: "rgba(146, 252, 204, 0.82)",
+    rayColor: "rgba(180, 255, 220, 0.72)",
+    rayMode: "soft",
+    satelliteMode: "droplet",
+    satellites: [
+      { left: "26%", bottom: "34%", size: 2 },
+      { left: "38%", bottom: "22%", size: 10 },
+
+    ],
+  },
+  blossom: {
+    initials: "RT",
+    rotate: 16,
+    twinkleDuration: 4.1,
+    delay: "-0.8s",
+    coreColor: "rgb(229, 160, 197)",
+    glowColor: "rgba(255, 170, 214, 0.88)",
+    rayColor: "rgba(255, 216, 234, 0.82)",
+    rayMode: "petal",
+    satelliteMode: "petals",
+    satellites: [
+      { left: "24%", bottom: "62%", size: 3 },
+      { left: "34%", bottom: "80%", size: 2 },
+      { left: "50%", bottom: "72%", size: 3 },
+      { left: "68%", bottom: "58%", size: 2 },
+      { left: "76%", bottom: "42%", size: 3 },
+    ],
+  },
+  moon: {
+    initials: "AR",
+    rotate: 0,
+    twinkleDuration: 5.6,
+    delay: "-0.4s",
+    coreColor: "rgba(246, 252, 255, 1)",
+    glowColor: "rgba(166, 220, 255, 0.92)",
+    rayColor: "rgba(214, 240, 255, 0.82)",
+    rayMode: "crystal",
+    satelliteMode: "orbit",
+    satellites: [
+      { left: "18%", bottom: "56%", size: 4 },
+      { left: "34%", bottom: "82%", size: 6 },
+      { left: "76%", bottom: "82%", size: 9 },
+      { left: "84%", bottom: "52%", size: 9 },
+
+    ],
+  },
+  oak: {
+    initials: "AM",
+    rotate: -6,
+    twinkleDuration: 5.0,
+    delay: "-1.4s",
+    coreColor: "rgba(245, 255, 206, 1)",
+    glowColor: "rgba(188, 228, 98, 0.84)",
+    rayColor: "rgba(220, 248, 156, 0.76)",
+    rayMode: "sturdy",
+    satelliteMode: "orbit",
+    satellites: [
+      { left: "26%", bottom: "24%", size: 1 },
+      { left: "40%", bottom: "14%", size: 12 },
+      { left: "58%", bottom: "14%", size: 5 },
+
+    ],
+  },
+  firefly: {
+    initials: "JC",
+    rotate: 12,
+    twinkleDuration: 3.7,
+    delay: "-1.9s",
+    coreColor: "rgba(255, 252, 196, 1)",
+    glowColor: "rgba(241, 255, 108, 0.96)",
+    rayColor: "rgba(248, 255, 170, 0.82)",
+    rayMode: "ember",
+    satelliteMode: "fireflies",
+    satellites: [
+      { left: "14%", bottom: "62%", size: 1 },
+      { left: "32%", bottom: "84%", size: 3 },
+      { left: "68%", bottom: "78%", size: 8 },
+      { left: "84%", bottom: "48%", size: 5 },
+    ],
+  },
+  silver: {
+    initials: "BC",
+    rotate: -14,
+    twinkleDuration: 5.3,
+    delay: "-0.6s",
+    coreColor: "rgba(255, 255, 255, 1)",
+    glowColor: "rgba(224, 232, 248, 0.92)",
+    rayColor: "rgba(240, 246, 255, 0.84)",
+    rayMode: "frost",
+    satelliteMode: "shards",
+    satellites: [
+      { left: "24%", bottom: "72%", size: 4 },
+      { left: "50%", bottom: "88%", size: 3 },
+      { left: "76%", bottom: "72%", size: 11 },
+      { left: "30%", bottom: "24%", size: 4 },
+      { left: "70%", bottom: "24%", size: 4 },
+    ],
+  },
 };
 
 function ForestMotionStyles() {
@@ -1743,6 +1911,46 @@ function ForestMotionStyles() {
             translateX(var(--particle-drift))
             scale(1.08);
           opacity: var(--particle-opacity);
+        }
+      }
+
+      @keyframes heroStarPulse {
+        0%, 100% {
+          transform: translate(-50%, -50%) scale(0.92);
+          opacity: 0.78;
+        }
+        50% {
+          transform: translate(-50%, -50%) scale(1.08);
+          opacity: 1;
+        }
+      }
+
+      @keyframes heroStarFlicker {
+        0%, 100% {
+          filter: brightness(0.94);
+        }
+        50% {
+          filter: brightness(1.22);
+        }
+      }
+
+      @keyframes heroStarSparkle {
+        0%, 100% {
+          transform: scale(0.88);
+          opacity: 0.5;
+        }
+        50% {
+          transform: scale(1.16);
+          opacity: 1;
+        }
+      }
+
+      @keyframes heroStarRayPulse {
+        0%, 100% {
+          opacity: 0.36;
+        }
+        50% {
+          opacity: 0.82;
         }
       }
     `}</style>
@@ -1924,6 +2132,497 @@ function ForestSpot({
   );
 }
 
+function getStarRayLayers(
+  profile: StarProfile,
+  cfg: { ray: number },
+  rayThickness: number
+) {
+  const base = profile.rotate;
+
+  switch (profile.rayMode) {
+    case "regal":
+      return [
+        {
+          width: Math.round(cfg.ray * 1.18),
+          height: rayThickness,
+          angle: base,
+          opacity: 0.94,
+          blur: 0.55,
+          duration: Math.max(2.6, profile.twinkleDuration - 0.9),
+        },
+        {
+          width: rayThickness,
+          height: Math.round(cfg.ray * 1.18),
+          angle: base,
+          opacity: 0.94,
+          blur: 0.55,
+          duration: Math.max(2.6, profile.twinkleDuration - 0.9),
+        },
+        {
+          width: Math.round(cfg.ray * 0.9),
+          height: Math.max(1, rayThickness - 1),
+          angle: 45 + base,
+          opacity: 0.72,
+          blur: 0.75,
+          duration: Math.max(3.1, profile.twinkleDuration),
+        },
+        {
+          width: Math.max(1, rayThickness - 1),
+          height: Math.round(cfg.ray * 0.9),
+          angle: 45 + base,
+          opacity: 0.72,
+          blur: 0.75,
+          duration: Math.max(3.1, profile.twinkleDuration),
+        },
+      ];
+
+    case "soft":
+      return [
+        {
+          width: Math.round(cfg.ray * 0.68),
+          height: rayThickness + 1,
+          angle: base + 10,
+          opacity: 0.26,
+          blur: 1.2,
+          duration: Math.max(3.6, profile.twinkleDuration + 0.4),
+        },
+        {
+          width: rayThickness + 1,
+          height: Math.round(cfg.ray * 0.68),
+          angle: base - 6,
+          opacity: 0.26,
+          blur: 1.2,
+          duration: Math.max(3.6, profile.twinkleDuration + 0.4),
+        },
+      ];
+
+    case "petal":
+      return [
+        {
+          width: Math.round(cfg.ray * 0.72),
+          height: rayThickness,
+          angle: base,
+          opacity: 0.52,
+          blur: 0.95,
+          duration: Math.max(3.0, profile.twinkleDuration - 0.2),
+        },
+        {
+          width: rayThickness,
+          height: Math.round(cfg.ray * 0.72),
+          angle: base,
+          opacity: 0.52,
+          blur: 0.95,
+          duration: Math.max(3.0, profile.twinkleDuration - 0.2),
+        },
+        {
+          width: Math.round(cfg.ray * 0.62),
+          height: Math.max(1, rayThickness - 1),
+          angle: 30 + base,
+          opacity: 0.42,
+          blur: 1.0,
+          duration: Math.max(3.3, profile.twinkleDuration + 0.3),
+        },
+        {
+          width: Math.max(1, rayThickness - 1),
+          height: Math.round(cfg.ray * 0.62),
+          angle: 60 + base,
+          opacity: 0.42,
+          blur: 1.0,
+          duration: Math.max(3.3, profile.twinkleDuration + 0.3),
+        },
+      ];
+
+    case "crystal":
+      return [
+        {
+          width: Math.round(cfg.ray * 1.06),
+          height: Math.max(1, rayThickness - 1),
+          angle: base,
+          opacity: 0.84,
+          blur: 0.45,
+          duration: Math.max(2.8, profile.twinkleDuration - 0.7),
+        },
+        {
+          width: Math.max(1, rayThickness - 1),
+          height: Math.round(cfg.ray * 1.06),
+          angle: base,
+          opacity: 0.84,
+          blur: 0.45,
+          duration: Math.max(2.8, profile.twinkleDuration - 0.7),
+        },
+        {
+          width: Math.round(cfg.ray * 0.84),
+          height: Math.max(1, rayThickness - 1),
+          angle: 45 + base,
+          opacity: 0.7,
+          blur: 0.55,
+          duration: Math.max(3.1, profile.twinkleDuration),
+        },
+        {
+          width: Math.max(1, rayThickness - 1),
+          height: Math.round(cfg.ray * 0.84),
+          angle: 45 + base,
+          opacity: 0.7,
+          blur: 0.55,
+          duration: Math.max(3.1, profile.twinkleDuration),
+        },
+        {
+          width: Math.round(cfg.ray * 0.62),
+          height: 1,
+          angle: 22 + base,
+          opacity: 0.46,
+          blur: 0.35,
+          duration: Math.max(3.4, profile.twinkleDuration + 0.2),
+        },
+        {
+          width: Math.round(cfg.ray * 0.62),
+          height: 1,
+          angle: 68 + base,
+          opacity: 0.46,
+          blur: 0.35,
+          duration: Math.max(3.4, profile.twinkleDuration + 0.2),
+        },
+      ];
+
+    case "sturdy":
+      return [
+        {
+          width: Math.round(cfg.ray * 0.78),
+          height: rayThickness + 1,
+          angle: base,
+          opacity: 0.78,
+          blur: 0.5,
+          duration: Math.max(3.1, profile.twinkleDuration),
+        },
+        {
+          width: rayThickness + 1,
+          height: Math.round(cfg.ray * 0.78),
+          angle: base,
+          opacity: 0.78,
+          blur: 0.5,
+          duration: Math.max(3.1, profile.twinkleDuration),
+        },
+      ];
+
+    case "ember":
+      return [
+        {
+          width: Math.round(cfg.ray * 0.52),
+          height: Math.max(1, rayThickness - 1),
+          angle: 30 + base,
+          opacity: 0.44,
+          blur: 0.9,
+          duration: Math.max(2.3, profile.twinkleDuration - 0.8),
+        },
+        {
+          width: Math.max(1, rayThickness - 1),
+          height: Math.round(cfg.ray * 0.52),
+          angle: 58 + base,
+          opacity: 0.36,
+          blur: 0.95,
+          duration: Math.max(2.5, profile.twinkleDuration - 0.5),
+        },
+      ];
+
+    case "frost":
+      return [
+        {
+          width: Math.round(cfg.ray * 1.02),
+          height: Math.max(1, rayThickness - 1),
+          angle: base,
+          opacity: 0.8,
+          blur: 0.45,
+          duration: Math.max(2.9, profile.twinkleDuration - 0.8),
+        },
+        {
+          width: Math.max(1, rayThickness - 1),
+          height: Math.round(cfg.ray * 1.02),
+          angle: base,
+          opacity: 0.8,
+          blur: 0.45,
+          duration: Math.max(2.9, profile.twinkleDuration - 0.8),
+        },
+        {
+          width: Math.round(cfg.ray * 0.86),
+          height: 1,
+          angle: 45 + base,
+          opacity: 0.68,
+          blur: 0.4,
+          duration: Math.max(3.2, profile.twinkleDuration),
+        },
+        {
+          width: 1,
+          height: Math.round(cfg.ray * 0.86),
+          angle: 45 + base,
+          opacity: 0.68,
+          blur: 0.4,
+          duration: Math.max(3.2, profile.twinkleDuration),
+        },
+        {
+          width: Math.round(cfg.ray * 0.54),
+          height: 1,
+          angle: 22 + base,
+          opacity: 0.46,
+          blur: 0.3,
+          duration: Math.max(3.5, profile.twinkleDuration + 0.2),
+        },
+        {
+          width: Math.round(cfg.ray * 0.54),
+          height: 1,
+          angle: 68 + base,
+          opacity: 0.46,
+          blur: 0.3,
+          duration: Math.max(3.5, profile.twinkleDuration + 0.2),
+        },
+      ];
+  }
+}
+
+function getSatelliteStyle(
+  profile: StarProfile,
+  satellite: { size: number },
+  index: number,
+  stage: StarStage,
+  cfg: { halo: number },
+  variant: TreeKey
+): CSSProperties {
+  const size = satellite.size + Math.floor(stage / 2);
+  const glow = `0 0 ${Math.round(cfg.halo * 0.45)}px ${profile.glowColor}`;
+
+  switch (profile.satelliteMode) {
+    case "crown":
+      return {
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: "999px",
+        background:
+          "radial-gradient(circle at 35% 35%, rgba(255,255,255,0.98), rgba(255,236,176,0.95) 48%, rgba(255,205,96,0.9) 100%)",
+        boxShadow: glow,
+        opacity: 0.56 + stage * 0.05,
+        animation: `heroStarSparkle ${2.5 + index * 0.32}s ease-in-out ${-index * 0.28}s infinite`,
+      };
+
+    case "droplet":
+      return {
+        width: `${Math.max(4, size - 1)}px`,
+        height: `${size + 4}px`,
+        borderRadius: "999px 999px 70% 70%",
+        background: `linear-gradient(to bottom, rgba(255,255,255,0.88), ${profile.coreColor})`,
+        boxShadow: glow,
+        opacity: 0.4 + stage * 0.045,
+        filter: "blur(0.15px)",
+        animation: `heroStarSparkle ${3.4 + index * 0.28}s ease-in-out ${-index * 0.22}s infinite`,
+      };
+
+    case "petals":
+      return {
+        width: `${size + 4}px`,
+        height: `${size}px`,
+        borderRadius: "999px",
+        background: `radial-gradient(circle at 50% 40%, rgba(255,255,255,0.94), ${profile.coreColor} 70%)`,
+        boxShadow: glow,
+        opacity: 0.5 + stage * 0.05,
+        transform: `rotate(${index % 2 === 0 ? -26 : 26}deg)`,
+        animation: `heroStarSparkle ${2.8 + index * 0.26}s ease-in-out ${-index * 0.3}s infinite`,
+      };
+
+    case "orbit":
+      return {
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: "999px",
+        background: "rgba(255,255,255,0.14)",
+        border: `1px solid ${profile.rayColor}`,
+        boxShadow: `inset 0 0 0 1px rgba(255,255,255,0.18), ${glow}`,
+        opacity: 0.46 + stage * 0.045,
+        animation: `heroStarSparkle ${3.6 + index * 0.3}s ease-in-out ${-index * 0.35}s infinite`,
+      };
+
+    case "acorns":
+      return {
+        width: `${size}px`,
+        height: `${size + 2}px`,
+        borderRadius: "45% 45% 60% 60%",
+        background:
+          "linear-gradient(to bottom, rgba(156,104,58,0.98), rgba(104,64,28,0.98))",
+        boxShadow: `0 0 ${Math.round(cfg.halo * 0.22)}px rgba(88,52,26,0.38)`,
+        opacity: 0.52 + stage * 0.04,
+        animation: `heroStarSparkle ${3.2 + index * 0.35}s ease-in-out ${-index * 0.24}s infinite`,
+      };
+
+    case "fireflies":
+      return {
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: "999px",
+        background: "rgba(255,255,220,0.98)",
+        boxShadow: `0 0 ${Math.round(cfg.halo * 0.62)}px ${profile.glowColor}`,
+        filter: "blur(0.28px)",
+        opacity: 0.46 + stage * 0.06,
+        animation: `heroStarSparkle ${2.0 + index * 0.22}s ease-in-out ${-index * 0.4}s infinite`,
+      };
+
+    case "shards":
+      return {
+        width: `${size}px`,
+        height: `${size + 2}px`,
+        clipPath: PAPER_CRYSTAL,
+        background: `linear-gradient(to bottom, rgba(255,255,255,0.98), ${profile.coreColor})`,
+        boxShadow: glow,
+        opacity: 0.48 + stage * 0.05,
+        animation: `heroStarSparkle ${2.9 + index * 0.3}s ease-in-out ${-index * 0.3}s infinite`,
+      };
+
+    default:
+      return {
+        width: `${size}px`,
+        height: `${size}px`,
+        borderRadius: "999px",
+        background: variant === "moon" ? profile.rayColor : profile.coreColor,
+        boxShadow: glow,
+        opacity: 0.42 + stage * 0.06,
+      };
+  }
+}
+
+function TreeStar({
+  stage,
+  variant,
+  cyclePhase,
+  left,
+  bottom,
+}: {
+  stage: StarStage;
+  variant: TreeKey;
+  cyclePhase: number;
+  left: string;
+  bottom: string;
+}) {
+  if (stage === 0) return null;
+
+  const profile = STAR_PROFILES[variant];
+  const cfg = STAR_STAGE_STYLE[stage];
+
+  const nightRise = Math.min(1, Math.max(0, (cyclePhase - 0.42) / 0.14));
+  const nightFall = 1 - Math.min(1, Math.max(0, (cyclePhase - 0.9) / 0.08));
+  const nightStrength = Math.max(0, Math.min(1, nightRise * nightFall));
+
+  if (nightStrength <= 0.02) return null;
+
+  const shellSize = cfg.size * 4;
+  const rayThickness = Math.max(2, Math.round(cfg.size * 0.14));
+  const visibleSatellites = profile.satellites.slice(0, cfg.satellites);
+  const rayLayers = getStarRayLayers(profile, cfg, rayThickness);
+
+  return (
+    <div
+      className="pointer-events-none absolute"
+      style={{
+        left,
+        bottom,
+        transform: "translate(-50%, 50%)",
+        opacity: nightStrength,
+      }}
+      aria-hidden="true"
+    >
+      <div
+        className="relative"
+        style={{
+          width: `${shellSize}px`,
+          height: `${shellSize}px`,
+        }}
+      >
+        <div
+          className="absolute left-1/2 top-1/2 rounded-full"
+          style={{
+            width: `${cfg.halo * 2}px`,
+            height: `${cfg.halo * 2}px`,
+            transform: "translate(-50%, -50%)",
+            background: `radial-gradient(circle, ${profile.glowColor} 0%, rgba(255,255,255,0.12) 28%, transparent 72%)`,
+            filter: `blur(${Math.round(cfg.halo * 0.42)}px)`,
+            opacity: cfg.glowOpacity,
+            animation: `heroStarPulse ${profile.twinkleDuration}s ease-in-out ${profile.delay} infinite`,
+          }}
+        />
+
+        {rayLayers.map((ray, index) => {
+          const horizontal = ray.width >= ray.height;
+
+          return (
+            <div
+              key={`ray-${variant}-${index}`}
+              className="absolute left-1/2 top-1/2"
+              style={{
+                width: `${ray.width}px`,
+                height: `${ray.height}px`,
+                transform: `translate(-50%, -50%) rotate(${ray.angle}deg)`,
+                background: horizontal
+                  ? `linear-gradient(to right, transparent, ${profile.rayColor}, transparent)`
+                  : `linear-gradient(to bottom, transparent, ${profile.rayColor}, transparent)`,
+                filter: `blur(${ray.blur}px)`,
+                opacity: ray.opacity,
+                animation: `heroStarRayPulse ${ray.duration}s ease-in-out ${profile.delay} infinite`,
+              }}
+            />
+          );
+        })}
+
+        <div
+          className="absolute left-1/2 top-1/2"
+          style={{
+            width: `${cfg.size}px`,
+            height: `${cfg.size}px`,
+            transform: `translate(-50%, -50%) rotate(${profile.rotate}deg)`,
+            clipPath:
+              "polygon(50% 0%, 61% 38%, 98% 38%, 68% 58%, 79% 96%, 50% 74%, 21% 96%, 32% 58%, 2% 38%, 39% 38%)",
+            background: `radial-gradient(circle at 50% 42%, rgba(255,255,255,0.98) 0%, ${profile.coreColor} 45%, ${profile.rayColor} 100%)`,
+            boxShadow: `0 0 ${cfg.halo}px ${profile.glowColor}`,
+            animation: `heroStarFlicker ${Math.max(
+              3.2,
+              profile.twinkleDuration - 1.2
+            )}s ease-in-out ${profile.delay} infinite`,
+          }}
+        />
+
+                {stage >= 1 && (
+          <div
+            className="absolute left-1/2 top-1/2 flex items-center justify-center uppercase"
+            style={{
+              width: `${cfg.size * 0.82}px`,
+              height: `${cfg.size * 0.82}px`,
+              transform: "translate(-50%, -50%)",
+              fontSize: `${Math.max(6, Math.round(cfg.size * 0.22))}px`,
+              lineHeight: 1,
+              fontFamily: '"Cinzel", "Times New Roman", serif', 
+              fontWeight: 700,
+              letterSpacing: "-0.03em",
+              color: "rgba(44, 34, 12, 0.92)",
+              textShadow:
+                "0 0 1px rgba(255,255,255,0.45), 0 1px 2px rgba(255,255,255,0.35)",
+              zIndex: 2,
+              pointerEvents: "none",
+            }}
+          >
+            {profile.initials}
+          </div>
+        )}
+
+        {visibleSatellites.map((satellite, index) => (
+          <div
+            key={`satellite-${variant}-${index}`}
+            className="absolute"
+            style={{
+              left: satellite.left,
+              bottom: satellite.bottom,
+              ...getSatelliteStyle(profile, satellite, index, stage, cfg, variant),
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function GroundPatch({ variant }: { variant: TreeKey }) {
   return (
     <>
@@ -1947,7 +2646,6 @@ function GroundPatch({ variant }: { variant: TreeKey }) {
     </>
   );
 }
-
 
 function TreeGrowth({
   stage,
@@ -2107,7 +2805,7 @@ function PaperCanopyTree({
 
   return (
     <div
-      className="absolute bottom-[3.35rem] left-1/2 -translate-x-1/2"
+      className="absolute bottom-[2.5rem] left-1/2 -translate-x-1/2"
       style={{
         width: `${scalePx(260, cfg.scale)}px`,
         height: `${scalePx(360, cfg.scale)}px`,
@@ -2141,7 +2839,7 @@ function PaperCanopyTree({
         />
       ))}
 
-            <TrunkName
+      <TrunkName
         label={label}
         bottom={0}
         height={cfg.trunkHeight}
